@@ -1,0 +1,129 @@
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-color);
+}
+
+/* 工具栏 */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  gap: 12px;
+  min-height: 40px;
+  flex-shrink: 0;
+}
+
+.editor-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.editor-file-path {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.editor-toolbar-right .ant-tag {
+  margin: 0;
+  font-size: 11px;
+  line-height: 20px;
+  border-radius: 4px;
+}
+
+.editor-encoding-tag {
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.editor-encoding-tag:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+/* 编辑器容器 */
+.editor-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.editor-codemirror {
+  height: 100%;
+  overflow: hidden;
+}
+
+.editor-codemirror .cm-editor {
+  height: 100%;
+  font-size: 13px;
+  font-family: 'Fira Code', 'SF Mono', 'Monaco', 'Consolas', 'DejaVu Sans Mono', monospace;
+}
+
+.editor-codemirror .cm-editor .cm-scroller {
+  overflow: auto;
+}
+
+.editor-codemirror .cm-editor.cm-focused {
+  outline: none;
+}
+
+/* 浅色模式微调 */
+.editor-codemirror .cm-editor .cm-gutters {
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  color: var(--text-tertiary);
+}
+
+.editor-codemirror .cm-editor .cm-activeLineGutter {
+  background: var(--hover-bg);
+}
+
+.editor-codemirror .cm-editor .cm-activeLine {
+  background: var(--hover-bg);
+}
+
+/* 加载中 */
+.editor-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-color);
+  z-index: 10;
+}
+
+/* 错误页面 */
+.editor-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}

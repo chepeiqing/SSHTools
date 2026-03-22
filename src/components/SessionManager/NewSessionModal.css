@@ -1,0 +1,289 @@
+/* ==================== New Session Modal - Clean Design ==================== */
+.new-session-modal .ant-modal-content {
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-color);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.new-session-modal .ant-modal-header {
+  display: none;
+}
+
+.new-session-modal .ant-modal-footer {
+  display: none;
+}
+
+.new-session-modal .ant-modal-body {
+  padding: 0;
+}
+
+.new-session-modal .ant-modal-close {
+  top: 16px;
+  right: 16px;
+  color: var(--text-tertiary);
+}
+
+.new-session-modal .ant-modal-close:hover {
+  color: var(--text-color);
+}
+
+/* Container */
+.nsm-container {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.nsm-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.nsm-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0;
+}
+
+/* Body */
+.nsm-body {
+  padding: 20px 24px;
+  max-height: 450px;
+  overflow-y: auto;
+}
+
+/* Form Items */
+.nsm-body .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.nsm-body .ant-form-item-label {
+  padding-bottom: 6px;
+}
+
+.nsm-body .ant-form-item-label > label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Inputs */
+.nsm-body .ant-input,
+.nsm-body .ant-input-number,
+.nsm-body .ant-select-selector,
+.nsm-body .ant-input-password,
+.nsm-body .ant-input-affix-wrapper,
+.nsm-body .ant-tree-select .ant-select-selector {
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  font-size: 14px;
+  height: 36px;
+}
+
+.nsm-body .ant-input-affix-wrapper {
+  padding: 0 11px;
+}
+
+.nsm-body .ant-input-affix-wrapper > input.ant-input {
+  background: transparent;
+  height: 34px;
+}
+
+.nsm-body .ant-input-number {
+  width: 100%;
+}
+
+.nsm-body .ant-input-number-input {
+  height: 34px;
+}
+
+.nsm-body .ant-select-selection-item,
+.nsm-body .ant-select-selection-placeholder {
+  line-height: 34px;
+}
+
+.nsm-body .ant-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.nsm-body .ant-input:focus,
+.nsm-body .ant-input-number:focus,
+.nsm-body .ant-input-affix-wrapper:focus,
+.nsm-body .ant-select-focused .ant-select-selector {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+/* Auth Type Tabs */
+.nsm-auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.nsm-auth-tab {
+  flex: 1;
+  height: 36px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nsm-auth-tab:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.nsm-auth-tab.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+/* Key File */
+.nsm-key-file {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.nsm-key-file .nsm-key-file-path {
+  flex: 1;
+}
+
+.nsm-key-file-path {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.nsm-key-file-path.has-file {
+  color: var(--text-color);
+}
+
+.nsm-key-file-path .placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Row Layout */
+.nsm-row {
+  display: flex;
+  gap: 12px;
+}
+
+.nsm-row > .ant-form-item {
+  flex: 1;
+}
+
+/* Password fix */
+.nsm-body .ant-input-password {
+  height: auto;
+}
+
+.nsm-body .ant-input-password input {
+  background: transparent;
+  height: 34px;
+}
+
+.nsm-body .ant-input-password .ant-input-suffix {
+  height: 34px;
+}
+
+/* Advanced Toggle */
+.nsm-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 8px 0;
+  margin-top: 8px;
+}
+
+.nsm-advanced-toggle:hover {
+  color: var(--primary-color);
+}
+
+.nsm-advanced-toggle .anticon {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.nsm-advanced-toggle.expanded .anticon {
+  transform: rotate(90deg);
+}
+
+.nsm-advanced-content {
+  display: none;
+  margin-top: 12px;
+}
+
+.nsm-advanced-content.visible {
+  display: block;
+}
+
+.nsm-advanced-content .ant-form-item {
+  margin-bottom: 12px;
+}
+
+/* Footer */
+.nsm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+/* Buttons */
+.nsm-test-btn {
+  font-size: 13px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 6px;
+}
+
+.nsm-test-btn.success {
+  color: var(--success-color);
+  border-color: var(--success-color);
+}
+
+.nsm-test-btn.error {
+  color: var(--error-color);
+  border-color: var(--error-color);
+}
+
+.nsm-cancel-btn {
+  font-size: 13px;
+  height: 34px;
+  min-width: 70px;
+  border-radius: 6px;
+}
+
+.nsm-ok-btn {
+  font-size: 13px;
+  height: 34px;
+  min-width: 90px;
+  border-radius: 6px;
+}

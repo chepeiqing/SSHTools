@@ -1,0 +1,345 @@
+.sftp-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-color, #ffffff);
+  position: relative;
+  overflow: hidden;
+}
+
+.sftp-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 工具栏 */
+.sftp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sftp-toolbar-left,
+.sftp-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sftp-toolbar-left {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 拖拽状态 */
+.sftp-panel.dragging {
+  background: rgba(22, 119, 255, 0.05);
+}
+
+.drag-hint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(22, 119, 255, 0.1);
+  border: 2px dashed var(--primary-color);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.drag-hint span {
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+/* 快速搜索提示 */
+.quick-search-hint {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 8px);
+  padding: 4px 12px;
+  font-size: 13px;
+  color: var(--primary-color);
+  box-shadow: var(--shadow-md);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  animation: quickSearchFadeIn 0.15s ease;
+}
+
+@keyframes quickSearchFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sftp-panel:focus {
+  outline: none;
+}
+
+/* 快速搜索高亮行 */
+.sftp-file-list .ant-table-tbody > tr.quick-search-highlight > td {
+  background: rgba(var(--primary-rgb, 22, 119, 255), 0.1);
+}
+
+/* 文件列表 */
+.sftp-file-list {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.sftp-file-list .ant-table-wrapper {
+  height: auto;
+}
+
+.sftp-file-list .ant-table {
+  background: transparent;
+}
+
+.sftp-file-list .ant-table-thead > tr > th {
+  background: var(--bg-secondary);
+  padding: 6px 8px;
+  font-size: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.sftp-file-list .ant-table-tbody > tr > td {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.sftp-file-list .ant-table-tbody > tr:hover > td {
+  background: var(--hover-bg);
+}
+
+/* 列拖拽调整宽度手柄 */
+.sftp-file-list th.react-resizable {
+  position: relative;
+}
+
+.column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.column-resize-handle:hover,
+.column-resize-handle:active {
+  background-color: var(--primary-color, #1677ff);
+  opacity: 0.4;
+}
+
+/* 排序图标紧凑 */
+.sftp-file-list .ant-table-column-sorter {
+  margin-inline-start: 2px;
+}
+
+/* 文件名单元格 */
+.file-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-icon {
+  font-size: 14px;
+}
+
+.file-icon.folder {
+  color: #dcb67a;
+}
+
+.file-icon.file {
+  color: var(--primary-color, #1677ff);
+}
+
+.file-icon.link {
+  color: #722ed1;
+}
+
+.parent-dir {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* 传输队列 */
+.transfer-queue {
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.transfer-queue-resize {
+  height: 2px;
+  padding: 5px 0;
+  background-clip: content-box;
+  background-color: transparent;
+  cursor: ns-resize;
+  flex-shrink: 0;
+  transition: background-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transfer-queue-resize::after {
+  content: '';
+  position: absolute;
+  width: 36px;
+  height: 4px;
+  background-image: radial-gradient(circle, var(--text-tertiary) 1px, transparent 1px);
+  background-size: 6px 4px;
+  background-position: center;
+}
+
+.transfer-queue-resize:hover {
+  background-clip: padding-box;
+  background-color: var(--primary-color);
+}
+
+.transfer-queue-resize:hover::after {
+  background-image: radial-gradient(circle, #fff 1px, transparent 1px);
+}
+
+.transfer-queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.queue-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+}
+
+.queue-counts {
+  color: var(--text-tertiary);
+  font-weight: normal;
+}
+
+.queue-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.queue-toggle {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-left: 4px;
+}
+
+.transfer-queue-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.transfer-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.transfer-queue-item.transferring {
+  background: rgba(22, 119, 255, 0.04);
+}
+
+.transfer-queue-item.failed {
+  background: rgba(255, 77, 79, 0.04);
+}
+
+.task-type-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.task-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-progress {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.task-status-label {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.status-text.pending {
+  color: var(--text-tertiary);
+}
+
+.status-text.transferring {
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+.status-text.completed {
+  color: var(--success-color);
+}
+
+.status-text.failed {
+  color: var(--error-color);
+  cursor: help;
+}
+
+.task-actions {
+  flex-shrink: 0;
+}
+
+/* 右键菜单 */
+.sftp-context-menu {
+  position: fixed;
+  z-index: 1050;
+}
+
+.sftp-context-menu .ant-dropdown {
+  position: static !important;
+}

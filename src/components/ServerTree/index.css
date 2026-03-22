@@ -1,0 +1,228 @@
+/* Tree Styling */
+.session-tree {
+  background: transparent !important;
+  margin-top: 8px;
+}
+
+.tree-group-title {
+  display: flex !important;
+  align-items: center !important;
+  width: 100%;
+  padding: 8px 0;
+}
+
+.group-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.group-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.group-count-badge {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.tree-server-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 4px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin: 6px 0;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.tree-server-card:hover {
+  background: var(--active-bg);
+  border-color: var(--primary-color);
+}
+
+.server-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.server-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.server-host {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: 'Fira Code', monospace;
+}
+
+/* Detail mode (HomePage) */
+.tree-server-card.detail {
+  padding: 10px 16px;
+}
+
+.tree-server-card.detail .server-info {
+  gap: 6px;
+}
+
+.server-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.server-meta-row .server-host {
+  flex-shrink: 0;
+}
+
+.meta-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  flex-shrink: 0;
+  margin: 0 8px;
+}
+
+.server-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.server-last-connect {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Ant Tree Overrides (CRITICAL) */
+.session-tree .ant-tree-treenode {
+  width: 100% !important;
+  padding: 0 0 0 0 !important;
+  display: flex !important;
+  align-items: stretch !important;
+}
+
+.session-tree .ant-tree-node-content-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+  width: 100% !important;
+  transition: none !important;
+}
+
+.session-tree .ant-tree-node-content-wrapper:hover {
+  background: transparent !important;
+}
+
+/* Selected State */
+.session-tree .ant-tree-node-selected .tree-server-card {
+  border: 1px solid var(--primary-color) !important;
+  background: var(--active-bg) !important;
+  box-shadow: 0 0 20px var(--primary-soft);
+}
+
+.session-tree .ant-tree-node-selected .server-name {
+  color: var(--primary-color) !important;
+}
+
+/* Status dots */
+.server-status-dot {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-tertiary);
+}
+
+.server-status-dot.connected {
+  background: var(--success-color);
+  box-shadow: 0 0 6px var(--success-color);
+}
+
+.server-status-dot.connecting {
+  background: var(--warning-color);
+  box-shadow: 0 0 6px var(--warning-color);
+}
+
+.server-status-dot.disconnected {
+  background: var(--text-tertiary);
+  box-shadow: none;
+}
+
+/* Hide switcher space for leaf nodes (servers) */
+.session-tree .ant-tree-switcher.ant-tree-switcher-noop {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Switcher / Indent Line */
+.session-tree .ant-tree-switcher {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 24px !important;
+  height: auto !important;
+  align-self: stretch !important;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  line-height: 1 !important;
+}
+
+.session-tree .ant-tree-switcher:before {
+  top: 8px !important;
+}
+
+.session-tree .ant-tree-switcher:hover {
+  background: none !important;
+  color: var(--primary-color) !important;
+}
+
+.session-tree .ant-tree-switcher-icon,
+.session-tree .ant-tree-switcher .anticon {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.session-tree .ant-tree-indent-unit {
+  position: relative;
+  width: 24px !important;
+}
+
+.session-tree .ant-tree-indent-unit::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  height: 100%;
+  width: 1px;
+  background: var(--border-color);
+}
