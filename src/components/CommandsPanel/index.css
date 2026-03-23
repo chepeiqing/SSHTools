@@ -1,0 +1,275 @@
+.commands-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--bg-color);
+  padding: 24px;
+  overflow: hidden;
+}
+
+.commands-panel > * {
+  width: 100%;
+  max-width: 860px;
+}
+
+.commands-header {
+  text-align: center;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.commands-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.commands-title .anticon {
+  font-size: 28px;
+  color: var(--primary-color);
+}
+
+.commands-title h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.commands-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.commands-search {
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.commands-search-input {
+  height: 40px;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+.commands-search-input:hover,
+.commands-search-input:focus-within {
+  border-color: var(--primary-color);
+}
+
+.commands-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.commands-collapse {
+  background: transparent;
+}
+
+.commands-collapse .ant-collapse-item {
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.commands-collapse .ant-collapse-header {
+  padding: 12px 16px !important;
+  background: var(--bg-secondary);
+  font-weight: 500;
+}
+
+.commands-collapse .ant-collapse-header:hover {
+  background: var(--hover-bg);
+}
+
+.commands-collapse .ant-collapse-content {
+  border-top: 1px solid var(--border-color);
+}
+
+.commands-collapse .ant-collapse-content-box {
+  padding: 0 !important;
+}
+
+.command-category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-label {
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.command-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.command-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.2s;
+}
+
+.command-item:last-child {
+  border-bottom: none;
+}
+
+.command-item:hover {
+  background: var(--hover-bg);
+}
+
+.command-item.danger {
+  background: rgba(var(--error-rgb, 255, 77, 79), 0.05);
+}
+
+.command-item.danger:hover {
+  background: rgba(var(--error-rgb, 255, 77, 79), 0.1);
+}
+
+.command-info {
+  flex: 1;
+  min-width: 0;
+  margin-right: 16px;
+}
+
+.command-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.danger-tag {
+  font-size: 11px;
+  padding: 0 6px;
+  line-height: 18px;
+  margin: 0;
+}
+
+.command-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.command-actions {
+  flex-shrink: 0;
+}
+
+.command-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s;
+  max-width: 400px;
+}
+
+.command-text:hover {
+  border-color: var(--primary-color);
+  background: var(--primary-soft);
+}
+
+.command-text code {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: var(--primary-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 350px;
+}
+
+.command-item.danger .command-text code {
+  color: var(--error-color);
+}
+
+.copy-icon {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.copy-icon.copied {
+  color: var(--success-color);
+}
+
+.command-text:hover .copy-icon {
+  color: var(--primary-color);
+}
+
+.commands-footer {
+  text-align: center;
+  padding-top: 16px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* 滚动条样式 */
+.commands-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.commands-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.commands-content::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.commands-content::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .commands-panel {
+    padding: 16px;
+  }
+
+  .command-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .command-info {
+    margin-right: 0;
+  }
+
+  .command-actions {
+    width: 100%;
+  }
+
+  .command-text {
+    max-width: 100%;
+  }
+
+  .command-text code {
+    max-width: 250px;
+  }
+}

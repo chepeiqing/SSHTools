@@ -17,6 +17,7 @@ import {
   SearchOutlined,
   LockOutlined,
   FileTextOutlined,
+  CodeOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import TerminalPanel from '../TerminalPanel'
@@ -25,6 +26,7 @@ import ConnectionDetailPanel from '../ConnectionDetailPanel'
 import EditorPanel from '../EditorPanel'
 import ServerTree from '../ServerTree'
 import NewSessionModal from '../SessionManager/NewSessionModal'
+import CommandsPanel from '../CommandsPanel'
 import { useConnectionStore, connectServer, disconnectServer } from '../../stores/connectionStore'
 import { useServerStore } from '../../stores/serverStore'
 import { onSessionConnect } from '../SessionManager'
@@ -34,7 +36,7 @@ import './index.css'
 interface SerializedTab {
   key: string
   label: string
-  type: 'home' | 'terminal' | 'editor'
+  type: 'home' | 'terminal' | 'editor' | 'commands'
   serverId?: string
   serverName?: string
   connectionId?: string
@@ -44,7 +46,7 @@ interface SerializedTab {
 interface TabItem {
   key: string
   label: string
-  type: 'home' | 'terminal' | 'editor'
+  type: 'home' | 'terminal' | 'editor' | 'commands'
   serverId?: string
   serverName?: string
   connectionId?: string
@@ -64,10 +66,25 @@ const HOME_TAB_KEY = '__home__'
 
 // 从跨窗口传输的数据反序列化为 TabItem
 function deserializeTab(tabData: Record<string, unknown>): TabItem {
+  const type = tabData.type as 'terminal' | 'editor' | 'commands'
+  
+  // commands 类型特殊处理
+  if (type === 'commands') {
+    return {
+      key: tabData.key as string,
+      label: tabData.label as string || '常用命令',
+      type: 'commands',
+      sftpVisible: false,
+      sftpHeight: 0,
+      sftpNavSeq: 0,
+      detailPanelVisible: false,
+    }
+  }
+  
   return {
     key: tabData.key as string,
     label: tabData.label as string,
-    type: tabData.type as 'terminal' | 'editor',
+    type: type,
     serverId: tabData.serverId as string | undefined,
     serverName: tabData.serverName as string | undefined,
     connectionId: tabData.connectionId as string | undefined,
@@ -445,7 +462,7 @@ const MainContent: React.FC<MainContentProps> = ({
       dragStateRef.current.pointerId = e.pointerId
     }
 
-    const startDrag = (e: PointerEvent) => {
+    const startDrag = (_e: PointerEvent) => {
       const state = dragStateRef.current
       state.isDragging = true
       document.body.classList.add('tab-dragging-active')
@@ -574,6 +591,29 @@ const MainContent: React.FC<MainContentProps> = ({
       dragStateRef.current.dragKey = null
     }
   }, [tabKeysStr])
+
+  // 打开常用命令面板
+  const openCommandsTab = () => {
+    // 检查是否已有命令面板标签
+    const existingTab = tabs.find(t => t.type === 'commands')
+    if (existingTab) {
+      setActiveKey(existingTab.key)
+      return
+    }
+
+    const tabKey = `commands-${Date.now()}`
+    const newTab: TabItem = {
+      key: tabKey,
+      label: '常用命令',
+      type: 'commands',
+      sftpVisible: false,
+      sftpHeight: 0,
+      sftpNavSeq: 0,
+      detailPanelVisible: false,
+    }
+    setTabs(prev => [...prev, newTab])
+    setActiveKey(tabKey)
+  }
 
   // 连接服务器并创建标签
   const connectAndCreateTab = async (serverId: string) => {
@@ -1121,6 +1161,15 @@ const MainContent: React.FC<MainContentProps> = ({
       )
     }
 
+    if (tab.type === 'commands') {
+      return (
+        <div className="tab-label">
+          <CodeOutlined />
+          <span className="tab-name">{tab.label}</span>
+        </div>
+      )
+    }
+
     return (
       <Dropdown
         menu={buildContextMenu(tab.key)}
@@ -1197,7 +1246,9 @@ const MainContent: React.FC<MainContentProps> = ({
     key: tab.key,
     label: renderTabLabel(tab),
     children: tab.type === 'home' ? (
-      <HomePage onConnect={connectAndCreateTab} onNewSession={() => setNewSessionVisible(true)} />
+      <HomePage onConnect={connectAndCreateTab} onNewSession={() => setNewSessionVisible(true)} onOpenCommands={openCommandsTab} />
+    ) : tab.type === 'commands' ? (
+      <CommandsPanel />
     ) : tab.type === 'editor' ? (
       <EditorPanel
         connectionId={tab.connectionId!}
@@ -1413,9 +1464,10 @@ const MainContent: React.FC<MainContentProps> = ({
 interface HomePageProps {
   onConnect: (serverId: string) => void
   onNewSession: () => void
+  onOpenCommands: () => void
 }
 
-const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession }) => {
+const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenCommands }) => {
   const { servers } = useServerStore()
   const [searchKeyword, setSearchKeyword] = useState('')
 
@@ -1425,6 +1477,16 @@ const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession }) => {
         <img src="./icon.svg" alt="SSHTools" className="home-hero-logo" />
         <h1 className="home-title">SSHTools</h1>
         <p className="home-subtitle">双击服务器卡片快速连接，右键管理会话和分组</p>
+      </div>
+
+      <div className="home-shortcuts">
+        <div className="shortcut-item" onClick={onOpenCommands}>
+          <CodeOutlined className="shortcut-icon" />
+          <div className="shortcut-info">
+            <span className="shortcut-title">常用命令</span>
+            <span className="shortcut-desc">运维人员常用命令速查</span>
+          </div>
+        </div>
       </div>
 
       <div className="home-search">

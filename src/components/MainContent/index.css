@@ -195,6 +195,8 @@ body.tab-dragging-active * {
 .terminal-wrapper {
   background: var(--bg-color);
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .resize-divider {
@@ -310,6 +312,59 @@ body.tab-dragging-active * {
 .home-search-input:hover,
 .home-search-input:focus-within {
   border-color: var(--primary-color);
+}
+
+/* 快捷入口 */
+.home-shortcuts {
+  width: 100%;
+  max-width: 720px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.shortcut-item:hover {
+  border-color: var(--primary-color);
+  background: var(--primary-soft);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.shortcut-icon {
+  font-size: 24px;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.shortcut-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shortcut-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.shortcut-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .home-empty {

@@ -48,6 +48,7 @@ export interface SystemStats {
   networkIP: string
   loginUsers: number
   processCount: number
+  topProcesses: { pid: string; user: string; cpu: string; mem: string; command: string; fullCommand: string }[]
 }
 
 // Electron API 接口

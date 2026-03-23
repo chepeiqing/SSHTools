@@ -39,7 +39,7 @@ export interface SystemStats {
   networkIP: string
   loginUsers: number
   processCount: number
-  topProcesses: { pid: string; user: string; cpu: string; mem: string; command: string }[]
+  topProcesses: { pid: string; user: string; cpu: string; mem: string; command: string; fullCommand: string }[]
 }
 
 // SSH 连接管理器
@@ -1027,7 +1027,7 @@ class SSHManager {
     try {
       const SEP = '__SEP__'
       // 一条命令采集全部信息，用分隔符分割各段
-      // 段顺序: os_type | cpu | mem | disk | uptime | os_info | hostname | load_avg | network_ip | login_users | process_count
+      // 段顺序: os_type | cpu | mem | disk | uptime | os_info | hostname | load_avg | network_ip | login_users | process_count | top_processes
       const script = `
 _os=$(uname -s 2>/dev/null || echo Linux)
 echo "$_os"
@@ -1081,12 +1081,14 @@ if [ "$_os" = "Darwin" ]; then
 else
   ls /proc 2>/dev/null | grep -c '^[0-9]' || ps aux 2>/dev/null | wc -l | tr -d ' '
 fi
+echo '${SEP}'
+ps aux --sort=-%cpu 2>/dev/null | awk 'NR>1 && NR<=6 {n=$11; gsub(/.*\\//, "", n); cmd=""; for(i=11;i<=NF;i++) cmd=cmd (i>11?" ":"") $i; printf "%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n", $2, $1, $3, $4, n, cmd}' || ps aux 2>/dev/null | head -6 | tail -5 | awk '{n=$11; gsub(/.*\\//, "", n); cmd=""; for(i=11;i<=NF;i++) cmd=cmd (i>11?" ":"") $i; printf "%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n", $2, $1, $3, $4, n, cmd}'
 `.trim()
 
       const result = await this.execCommand(id, script)
 
       let osType = '', cpuStr = '', memStr = '', diskStr = '', uptimeStr = ''
-      let osInfo = '', hostname = '', loadAvg = '', networkIP = '', loginUsersStr = '', processCountStr = ''
+      let osInfo = '', hostname = '', loadAvg = '', networkIP = '', loginUsersStr = '', processCountStr = '', topStr = ''
 
       if (result.output) {
         const parts = result.output.split(SEP).map(s => s.trim())
@@ -1101,6 +1103,7 @@ fi
         networkIP = parts[8] || ''
         loginUsersStr = parts[9] || ''
         processCountStr = parts[10] || ''
+        topStr = parts[11] || ''
       }
 
       const cpuUsage = parseFloat(cpuStr) || 0
@@ -1117,6 +1120,24 @@ fi
         const diskParts = diskStr.split(/\s+/)
         diskUsed = parseInt(diskParts[0]) || 0
         diskTotal = parseInt(diskParts[1]) || 1
+      }
+
+      // 解析 top 进程
+      const topProcesses: { pid: string; user: string; cpu: string; mem: string; command: string; fullCommand: string }[] = []
+      if (topStr) {
+        for (const line of topStr.split('\n')) {
+          const cols = line.split('\t')
+          if (cols.length >= 5) {
+            topProcesses.push({
+              pid: cols[0].trim(),
+              user: cols[1].trim(),
+              cpu: cols[2].trim(),
+              mem: cols[3].trim(),
+              command: cols[4].trim(),
+              fullCommand: (cols[5] || cols[4] || '').trim(),
+            })
+          }
+        }
       }
 
       return {
@@ -1136,6 +1157,7 @@ fi
           networkIP: networkIP && networkIP !== '-' ? networkIP : '',
           loginUsers: parseInt(loginUsersStr) || 0,
           processCount: parseInt(processCountStr) || 0,
+          topProcesses,
         }
       }
     } catch (err: unknown) {
