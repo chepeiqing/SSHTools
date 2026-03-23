@@ -101,6 +101,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   // 终端尺寸状态
   const [, setTerminalSize] = useState({ cols: 80, rows: 24 })
+  const [terminalReady, setTerminalReady] = useState(false)
 
   const [searchVisible, setSearchVisible] = useState(false)
   const [searchText, setSearchText] = useState('')
@@ -336,6 +337,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
       terminalInstance.current = term
       fitAddonRef.current = fitAddon
       searchAddonRef.current = searchAddon
+      setTerminalReady(true)
 
       try {
         fitAddon.fit()
@@ -442,7 +444,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   // 当连接建立后启动 shell
   useEffect(() => {
-    if (connectionId && isConnected && terminalInstance.current) {
+    if (connectionId && isConnected && terminalReady && terminalInstance.current) {
       window.electronAPI.sshStartShell(connectionId).then((result) => {
         if (!result.success) {
           terminalInstance.current?.writeln(`\x1b[31m启动 Shell 失败: ${result.error}\x1b[0m`)
@@ -466,7 +468,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         }
       })
     }
-  }, [connectionId, isConnected])
+  }, [connectionId, isConnected, terminalReady])
 
   // 主题/配色变化时更新终端
   useEffect(() => {

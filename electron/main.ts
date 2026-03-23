@@ -188,8 +188,13 @@ ipcMain.handle('ssh-is-connected', async (_event: IpcMainInvokeEvent, id: string
 })
 
 // 启动 Shell
-ipcMain.handle('ssh-start-shell', async (_event: IpcMainInvokeEvent, id: string) => {
-  return await sshManager.startShell(id)
+ipcMain.handle('ssh-start-shell', async (event: IpcMainInvokeEvent, id: string) => {
+  const result = await sshManager.startShell(id)
+  // 更新连接目标到调用方窗口（跨窗口迁移时，确保数据发到正确窗口）
+  if (result.success && event.sender && !event.sender.isDestroyed()) {
+    sshManager.setConnectionTarget(id, event.sender)
+  }
+  return result
 })
 
 // 向终端写入数据

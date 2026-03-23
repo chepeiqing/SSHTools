@@ -46,6 +46,8 @@ interface SerializedTab {
   serverName?: string
   connectionId?: string
   status?: string
+  editorRemotePath?: string
+  editorFileName?: string
 }
 
 interface TabItem {
@@ -85,7 +87,7 @@ function deserializeTab(tabData: Record<string, unknown>): TabItem {
       detailPanelVisible: false,
     }
   }
-  
+
   return {
     key: tabData.key as string,
     label: tabData.label as string,
@@ -97,7 +99,9 @@ function deserializeTab(tabData: Record<string, unknown>): TabItem {
     sftpVisible: false,
     sftpHeight: 0,
     sftpNavSeq: 0,
-    detailPanelVisible: true,
+    detailPanelVisible: type === 'terminal',
+    editorRemotePath: tabData.editorRemotePath as string | undefined,
+    editorFileName: tabData.editorFileName as string | undefined,
   }
 }
 
@@ -211,6 +215,12 @@ const MainContent: React.FC<MainContentProps> = ({
     const tab = tabs.find(t => t.key === tabKey)
     if (!tab || tab.type === 'home') return
 
+    // 编辑器有未保存内容时阻止拖出
+    if (tab.type === 'editor' && tab.editorDirty) {
+      message.warning('请先保存文件再拖出窗口')
+      return
+    }
+
     const tabData: SerializedTab = {
       key: tab.key,
       label: tab.label,
@@ -219,6 +229,8 @@ const MainContent: React.FC<MainContentProps> = ({
       serverName: tab.serverName,
       connectionId: tab.connectionId,
       status: tab.status,
+      editorRemotePath: tab.editorRemotePath,
+      editorFileName: tab.editorFileName,
     }
 
     // 先询问主进程（主进程用真实光标位置判断），再决定是否移除标签
