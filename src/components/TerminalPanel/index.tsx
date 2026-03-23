@@ -227,6 +227,12 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         return false
       }
 
+      // Ctrl+R → 禁用（防止页面刷新）
+      if (ctrl && e.key === 'r') {
+        e.preventDefault()
+        return false
+      }
+
       // Ctrl++ (Ctrl+Shift+=) 或 Ctrl+= → 放大字体
       if (ctrl && (e.key === '+' || e.key === '=')) {
         e.preventDefault()

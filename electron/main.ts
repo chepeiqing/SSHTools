@@ -88,6 +88,10 @@ function createWindow(): BrowserWindow {
     sshManager.unregisterWindow(wc)
     windows.delete(win)
     pendingTabData.delete(win.id)
+    // 如果关闭的窗口正是拖拽源，清理拖拽状态（防止定时器/overlay 泄漏）
+    if (dragSourceWinId === win.id) {
+      cleanupDragState()
+    }
   })
 
   return win
@@ -458,6 +462,41 @@ let dragOverlay: BrowserWindow | null = null
 let lastDragOverWinId: number | null = null
 let hasLeftSource = false
 
+// 清理所有拖拽状态（tab-drag-hover-end 和窗口崩溃/关闭时共用）
+function cleanupDragState() {
+  if (dragHoverTimer) {
+    clearInterval(dragHoverTimer)
+    dragHoverTimer = null
+  }
+  if (dragOverlayTimer) {
+    clearInterval(dragOverlayTimer)
+    dragOverlayTimer = null
+  }
+  if (dragOverlay && !dragOverlay.isDestroyed()) {
+    dragOverlay.destroy()
+    dragOverlay = null
+  }
+  if (lastDragOverWinId) {
+    for (const w of windows) {
+      if (w.id === lastDragOverWinId && !w.isDestroyed()) {
+        w.webContents.send('tab-drag-leave')
+        break
+      }
+    }
+    lastDragOverWinId = null
+  }
+  if (dragSourceWinId) {
+    for (const w of windows) {
+      if (w.id === dragSourceWinId && !w.isDestroyed()) {
+        w.setAlwaysOnTop(false)
+        break
+      }
+    }
+  }
+  dragSourceWinId = null
+  lastRaisedWinId = null
+}
+
 ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: string) => {
   const sourceWin = BrowserWindow.fromWebContents(event.sender)
   if (!sourceWin) return
@@ -501,7 +540,10 @@ ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: stri
 
   // 150ms 检测置顶 + 跨窗口拖拽指示器
   dragHoverTimer = setInterval(() => {
-    const srcWin = [...windows].find(w => w.id === dragSourceWinId && !w.isDestroyed())
+    let srcWin: BrowserWindow | undefined
+    for (const w of windows) {
+      if (w.id === dragSourceWinId && !w.isDestroyed()) { srcWin = w; break }
+    }
     const point = screen.getCursorScreenPoint()
 
     // 判断光标是否在源窗口范围内
@@ -516,7 +558,10 @@ ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: stri
     if (inSource && !hasLeftSource) {
       if (srcWin) srcWin.setAlwaysOnTop(false)
       if (lastDragOverWinId) {
-        const prevWin = [...windows].find(w => w.id === lastDragOverWinId && !w.isDestroyed())
+        let prevWin: BrowserWindow | undefined
+        for (const w of windows) {
+          if (w.id === lastDragOverWinId && !w.isDestroyed()) { prevWin = w; break }
+        }
         if (prevWin) prevWin.webContents.send('tab-drag-leave')
         lastDragOverWinId = null
       }
@@ -540,7 +585,10 @@ ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: stri
         // 向目标窗口发送光标屏幕坐标，用于显示插入指示器
         win.webContents.send('tab-drag-over', point.x)
         if (lastDragOverWinId && lastDragOverWinId !== win.id) {
-          const prevWin = [...windows].find(w => w.id === lastDragOverWinId && !w.isDestroyed())
+          let prevWin: BrowserWindow | undefined
+          for (const w of windows) {
+            if (w.id === lastDragOverWinId && !w.isDestroyed()) { prevWin = w; break }
+          }
           if (prevWin) prevWin.webContents.send('tab-drag-leave')
         }
         lastDragOverWinId = win.id
@@ -552,17 +600,21 @@ ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: stri
     if (!foundTarget) {
       // 清除目标窗口指示器
       if (lastDragOverWinId) {
-        const prevWin = [...windows].find(w => w.id === lastDragOverWinId && !w.isDestroyed())
+        let prevWin: BrowserWindow | undefined
+        for (const w of windows) {
+          if (w.id === lastDragOverWinId && !w.isDestroyed()) { prevWin = w; break }
+        }
         if (prevWin) prevWin.webContents.send('tab-drag-leave')
         lastDragOverWinId = null
       }
 
       if (inSource) {
-        // 回到源窗口（无目标重叠）→ 置顶源窗口
+        // 回到源窗口（无目标重叠）→ 置顶源窗口，重置离开标记
         if (srcWin) {
           srcWin.setAlwaysOnTop(false)
           srcWin.moveTop()
         }
+        hasLeftSource = false
       } else {
         // 不在任何 SSHTools 窗口上，alwaysOnTop 防止第三方抢焦点
         if (srcWin) srcWin.setAlwaysOnTop(true, 'floating')
@@ -573,30 +625,7 @@ ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: stri
 })
 
 ipcMain.handle('tab-drag-hover-end', () => {
-  if (dragHoverTimer) {
-    clearInterval(dragHoverTimer)
-    dragHoverTimer = null
-  }
-  if (dragOverlayTimer) {
-    clearInterval(dragOverlayTimer)
-    dragOverlayTimer = null
-  }
-  if (dragOverlay && !dragOverlay.isDestroyed()) {
-    dragOverlay.destroy()
-    dragOverlay = null
-  }
-  // 清除目标窗口的拖拽指示器
-  if (lastDragOverWinId) {
-    const prevWin = [...windows].find(w => w.id === lastDragOverWinId && !w.isDestroyed())
-    if (prevWin) prevWin.webContents.send('tab-drag-leave')
-    lastDragOverWinId = null
-  }
-  if (dragSourceWinId) {
-    const srcWin = [...windows].find(w => w.id === dragSourceWinId && !w.isDestroyed())
-    if (srcWin) srcWin.setAlwaysOnTop(false)
-  }
-  dragSourceWinId = null
-  lastRaisedWinId = null
+  cleanupDragState()
 })
 
 // 标签拖出窗口：创建新窗口或转移到已有窗口

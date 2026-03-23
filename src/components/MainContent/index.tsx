@@ -62,6 +62,23 @@ interface TabItem {
 
 const HOME_TAB_KEY = '__home__'
 
+// 从跨窗口传输的数据反序列化为 TabItem
+function deserializeTab(tabData: Record<string, unknown>): TabItem {
+  return {
+    key: tabData.key as string,
+    label: tabData.label as string,
+    type: tabData.type as 'terminal' | 'editor',
+    serverId: tabData.serverId as string | undefined,
+    serverName: tabData.serverName as string | undefined,
+    connectionId: tabData.connectionId as string | undefined,
+    status: (tabData.status as TabItem['status']) || 'connected',
+    sftpVisible: false,
+    sftpHeight: 0,
+    sftpNavSeq: 0,
+    detailPanelVisible: true,
+  }
+}
+
 // 判断是否为认证相关错误
 function isAuthError(error?: string): boolean {
   if (!error) return false
@@ -109,6 +126,8 @@ const MainContent: React.FC<MainContentProps> = ({
     },
   ])
   const [activeKey, setActiveKey] = useState<string>(HOME_TAB_KEY)
+  const activeKeyRef = useRef(activeKey)
+  activeKeyRef.current = activeKey
   const [detailPanelVisible, setDetailPanelVisible] = useState(true)
   const { message, modal } = App.useApp()
 
@@ -186,21 +205,26 @@ const MainContent: React.FC<MainContentProps> = ({
     // 从当前窗口移除标签（不断开 SSH 连接）
     setTabs(prev => {
       const remaining = prev.filter(t => t.key !== tabKey)
+
+      // 清理源窗口的连接状态（如果没有其他标签在用同一个连接）
+      const removedTab = prev.find(t => t.key === tabKey)
+      if (removedTab?.connectionId) {
+        const otherTabUsing = remaining.some(t => t.connectionId === removedTab.connectionId)
+        if (!otherTabUsing) {
+          useConnectionStore.getState().removeConnection(removedTab.connectionId)
+        }
+      }
+
+      // 如果移除的是当前活跃标签，选中上一个标签
+      // 使用 activeKeyRef 获取最新值（避免 await 后闭包过期）
+      // 使用 queueMicrotask 在本次渲染前完成（setTimeout 会导致一帧空白）
+      if (activeKeyRef.current === tabKey) {
+        const nextKey = remaining.length > 0 ? remaining[remaining.length - 1].key : HOME_TAB_KEY
+        queueMicrotask(() => setActiveKey(nextKey))
+      }
       return remaining
     })
-    if (activeKey === tabKey) {
-      const remaining = tabs.filter(t => t.key !== tabKey)
-      setActiveKey(remaining.length > 0 ? remaining[remaining.length - 1].key : HOME_TAB_KEY)
-    }
-
-    // 清理源窗口的连接状态（如果没有其他标签在用同一个连接）
-    if (tab.connectionId) {
-      const otherTabUsing = tabs.some(t => t.key !== tabKey && t.connectionId === tab.connectionId)
-      if (!otherTabUsing) {
-        useConnectionStore.getState().removeConnection(tab.connectionId)
-      }
-    }
-  }, [tabs, activeKey])
+  }, [tabs])
 
   const tearOffTabRef = useRef(tearOffTab)
   useEffect(() => { tearOffTabRef.current = tearOffTab })
@@ -208,19 +232,7 @@ const MainContent: React.FC<MainContentProps> = ({
   // === 接收来自其他窗口的标签 ===
   useEffect(() => {
     const receiveTab = (tabData: Record<string, unknown>) => {
-      const newTab: TabItem = {
-        key: tabData.key as string,
-        label: tabData.label as string,
-        type: tabData.type as 'terminal' | 'editor',
-        serverId: tabData.serverId as string | undefined,
-        serverName: tabData.serverName as string | undefined,
-        connectionId: tabData.connectionId as string | undefined,
-        status: (tabData.status as TabItem['status']) || 'connected',
-        sftpVisible: false,
-        sftpHeight: 0,
-        sftpNavSeq: 0,
-        detailPanelVisible: true,
-      }
+      const newTab = deserializeTab(tabData)
 
       // 在 connectionStore 中注册连接状态（新窗口的 store 中没有）
       if (newTab.connectionId && newTab.serverId) {
@@ -242,7 +254,7 @@ const MainContent: React.FC<MainContentProps> = ({
         const navList = document.querySelector('.main-tabs .ant-tabs-nav-list')
         if (navList) {
           const tabNodes = Array.from(navList.querySelectorAll<HTMLElement>('.ant-tabs-tab'))
-          // screenX → 相对于标签栏的 clientX
+          // screenX → clientX（Electron 无边框窗口中 window.screenX 即视口左边缘屏幕坐标）
           const clientX = screenX - window.screenX
           let insertKey: string | null = null
           let insertPos: 'before' | 'after' = 'after'
@@ -332,19 +344,7 @@ const MainContent: React.FC<MainContentProps> = ({
     window.electronAPI.getInitTabs().then((tabData) => {
       if (!tabData) return
 
-      const newTab: TabItem = {
-        key: tabData.key as string,
-        label: tabData.label as string,
-        type: tabData.type as 'terminal' | 'editor',
-        serverId: tabData.serverId as string | undefined,
-        serverName: tabData.serverName as string | undefined,
-        connectionId: tabData.connectionId as string | undefined,
-        status: (tabData.status as TabItem['status']) || 'connected',
-        sftpVisible: false,
-        sftpHeight: 0,
-        sftpNavSeq: 0,
-        detailPanelVisible: true,
-      }
+      const newTab = deserializeTab(tabData)
 
       // 在 connectionStore 中注册连接状态
       if (newTab.connectionId && newTab.serverId) {
