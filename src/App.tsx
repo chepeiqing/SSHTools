@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import TitleBar from './components/TitleBar'
 import SessionManager, { emitSessionConnect } from './components/SessionManager'
 import MainContent from './components/MainContent'
+import SettingsModal from './components/SettingsModal'
 import ErrorBoundary from './components/ErrorBoundary'
 import { useThemeStore } from './stores/themeStore'
 import { hydrateCredentials, restoreFromBackup } from './stores/serverStore'
@@ -38,6 +39,7 @@ const App: React.FC = () => {
             onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           />
         </div>
+        <SettingsModal />
       </div>
     </ErrorBoundary>
   )

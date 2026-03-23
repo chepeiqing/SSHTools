@@ -313,6 +313,9 @@ class SSHManager {
           this.shellStreams.delete(id)
           this.shellBuffers.delete(id)
           this.sendToConnection(id, 'ssh-shell-closed', { id })
+          // Shell 关闭后主动断开 SSH 连接（如超时 auto-logout），
+          // 触发 ssh-disconnected 事件，使终端能通过回车重连
+          this.disconnect(id)
         })
 
         stream.stderr.on('data', (data: Buffer) => {

@@ -34,6 +34,7 @@ import DocPanel from '../DocPanel'
 import { useConnectionStore, connectServer, disconnectServer } from '../../stores/connectionStore'
 import { useServerStore } from '../../stores/serverStore'
 import { onSessionConnect } from '../SessionManager'
+import { useSettingsModal } from '../SettingsModal'
 import './index.css'
 
 // 序列化标签数据（用于跨窗口传输）
@@ -1510,6 +1511,7 @@ interface HomePageProps {
 
 const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenCommands, onOpenDoc }) => {
   const { servers } = useServerStore()
+  const { openSettings } = useSettingsModal()
   const [searchKeyword, setSearchKeyword] = useState('')
   const [shortcutTipOpen, setShortcutTipOpen] = useState(false)
 
@@ -1538,7 +1540,7 @@ const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenComm
           <div className="module-icon"><BookOutlined /></div>
           <span className="module-label">使用文档</span>
         </div>
-        <div className="module-item disabled" title="敬请期待">
+        <div className="module-item" onClick={openSettings}>
           <div className="module-icon"><SettingOutlined /></div>
           <span className="module-label">全局设置</span>
         </div>

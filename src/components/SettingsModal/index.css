@@ -1,0 +1,180 @@
+/* 弹窗容器 */
+.settings-modal-wrapper .ant-modal-content {
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.dark .settings-modal-wrapper .ant-modal-content {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.settings-modal-wrapper .ant-modal-header {
+  display: none;
+}
+
+.settings-modal-wrapper .ant-modal-body {
+  padding: 0;
+}
+
+.settings-modal-wrapper .ant-modal-close {
+  top: 16px;
+  right: 16px;
+  color: var(--text-tertiary);
+}
+
+.settings-modal-wrapper .ant-modal-close:hover {
+  color: var(--text-color);
+}
+
+/* 设置弹窗内部布局 */
+.settings-modal {
+  padding: 24px;
+}
+
+.settings-modal-header {
+  margin-bottom: 20px;
+}
+
+.settings-modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0 0 4px;
+}
+
+.settings-modal-subtitle {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.settings-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 分组 */
+.settings-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-modal-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-modal-mode-tag {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--primary-soft);
+  color: var(--primary-color);
+}
+
+/* 主题模式选择 */
+.theme-mode-group {
+  display: flex;
+  gap: 10px;
+}
+
+.theme-mode-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px 10px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.theme-mode-card:hover {
+  border-color: var(--primary-color);
+  background: var(--primary-soft);
+}
+
+.theme-mode-card.active {
+  border-color: var(--primary-color);
+  background: var(--primary-soft);
+}
+
+.theme-mode-icon {
+  font-size: 20px;
+  color: var(--text-color);
+}
+
+.theme-mode-card.active .theme-mode-icon {
+  color: var(--primary-color);
+}
+
+.theme-mode-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.theme-mode-check {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 10px;
+  color: var(--primary-color);
+}
+
+/* 设置行 */
+.settings-modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-color);
+  padding: 2px 0;
+}
+
+.settings-modal-font-value {
+  display: inline-block;
+  min-width: 24px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* 配色方案网格 - 复用终端设置的 swatch 样式 */
+.settings-modal-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+/* 自定义颜色 */
+.settings-modal-custom-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 0;
+}
+
+.settings-modal-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-color);
+}

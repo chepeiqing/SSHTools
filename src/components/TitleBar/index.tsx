@@ -6,9 +6,6 @@ import {
   CloseOutlined,
   BlockOutlined,
   SettingOutlined,
-  SunOutlined,
-  MoonOutlined,
-  DesktopOutlined,
   SearchOutlined,
   ImportOutlined,
   ExportOutlined,
@@ -16,7 +13,7 @@ import {
   GithubOutlined,
   MailOutlined,
 } from '@ant-design/icons'
-import { useThemeStore } from '../../stores/themeStore'
+import { useSettingsModal } from '../SettingsModal'
 import { useServerStore } from '../../stores/serverStore'
 import { useConnectionStore } from '../../stores/connectionStore'
 import type { MenuProps } from 'antd'
@@ -29,7 +26,7 @@ interface TitleBarProps {
 }
 
 const TitleBar: React.FC<TitleBarProps> = ({ onConnect }) => {
-  const { mode, setMode } = useThemeStore()
+  const { openSettings } = useSettingsModal()
   const { servers, exportConfig, importConfig } = useServerStore()
   const { connections } = useConnectionStore()
   const [isMaximized, setIsMaximized] = useState(false)
@@ -249,43 +246,14 @@ const TitleBar: React.FC<TitleBarProps> = ({ onConnect }) => {
 
   const settingMenuItems: MenuProps['items'] = [
     {
-      key: 'theme',
-      label: '主题设置',
-      children: [
-        {
-          key: 'light',
-          label: (
-            <Space>
-              <SunOutlined />
-              <span>浅色模式</span>
-              {mode === 'light' && <span style={{ color: '#1677ff' }}>✓</span>}
-            </Space>
-          ),
-          onClick: () => setMode('light'),
-        },
-        {
-          key: 'dark',
-          label: (
-            <Space>
-              <MoonOutlined />
-              <span>深色模式</span>
-              {mode === 'dark' && <span style={{ color: '#1677ff' }}>✓</span>}
-            </Space>
-          ),
-          onClick: () => setMode('dark'),
-        },
-        {
-          key: 'system',
-          label: (
-            <Space>
-              <DesktopOutlined />
-              <span>跟随系统</span>
-              {mode === 'system' && <span style={{ color: '#1677ff' }}>✓</span>}
-            </Space>
-          ),
-          onClick: () => setMode('system'),
-        },
-      ],
+      key: 'settings',
+      label: (
+        <Space>
+          <SettingOutlined />
+          <span>全局设置</span>
+        </Space>
+      ),
+      onClick: openSettings,
     },
     { type: 'divider' },
     {

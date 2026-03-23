@@ -10,7 +10,6 @@ import {
   ClearOutlined,
   CopyOutlined,
   ExportOutlined,
-  SettingOutlined,
   AimOutlined,
   VerticalAlignBottomOutlined,
   LinkOutlined,
@@ -29,8 +28,7 @@ import {
 import { useThemeStore } from '../../stores/themeStore'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useServerStore } from '../../stores/serverStore'
-import { useTerminalThemeStore, getTerminalColorScheme, darkPresets, lightPresets } from '../../stores/terminalThemeStore'
-import TerminalSettingsPanel from './TerminalSettingsPanel'
+import { useTerminalThemeStore, getTerminalColorScheme } from '../../stores/terminalThemeStore'
 import TerminalHistoryPanel from './TerminalHistoryPanel'
 import QuickCommandsPanel from './QuickCommandsPanel'
 import '@xterm/xterm/css/xterm.css'
@@ -67,11 +65,16 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const { getConnection } = useConnectionStore()
   const { message } = App.useApp()
 
+  // 终端设置 — 从全局 store 读取
+  const terminalThemeState = useTerminalThemeStore()
+  const { fontSize, fontFamily, wordWrap, scrollOnOutput } = terminalThemeState
+  const { setFontSize, setWordWrap } = terminalThemeState
+
   // 使用 ref 存储最新的连接状态，避免闭包问题
   const connectionIdRef = useRef(connectionId)
   const isConnectedRef = useRef(false)
   const onReconnectRef = useRef(onReconnect)
-  const wordWrapRef = useRef(true)
+  const wordWrapRef = useRef(wordWrap)
 
   // 获取连接状态
   const connection = connectionId ? getConnection(connectionId) : undefined
@@ -82,6 +85,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   connectionIdRef.current = connectionId
   isConnectedRef.current = isConnected || false
   onReconnectRef.current = onReconnect
+  wordWrapRef.current = wordWrap
 
   // 获取 SSH 当前工作目录（通过交互式 shell，获取真实 CWD）
   const getCurrentPath = useCallback(async (): Promise<string> => {
@@ -98,12 +102,8 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   // 终端尺寸状态
   const [, setTerminalSize] = useState({ cols: 80, rows: 24 })
 
-  // 终端设置状态
-  const [wordWrap, setWordWrap] = useState(true)
-  const [fontSize, setFontSize] = useState(14)
   const [searchVisible, setSearchVisible] = useState(false)
   const [searchText, setSearchText] = useState('')
-  const [scrollOnOutput, setScrollOnOutput] = useState(true)
 
   // 历史命令
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -113,19 +113,13 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   // 右键菜单
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null)
 
-  // 设置面板
-  const [settingsOpen, setSettingsOpen] = useState(false)
-
   // 快捷命令面板
   const [quickCmdsOpen, setQuickCmdsOpen] = useState(false)
   const { servers, updateServer } = useServerStore()
 
-  // 终端配色 store
-  const terminalThemeState = useTerminalThemeStore()
-  const { setPreset, setCustomColor } = terminalThemeState
+  // 终端配色
   const currentPresetId = actualTheme === 'dark' ? terminalThemeState.darkPresetId : terminalThemeState.lightPresetId
   const currentCustomColors = actualTheme === 'dark' ? terminalThemeState.customDark : terminalThemeState.customLight
-  const currentPresetsMap = actualTheme === 'dark' ? darkPresets : lightPresets
 
   const terminalColorScheme = useMemo(
     () => getTerminalColorScheme(actualTheme, terminalThemeState),
@@ -200,9 +194,11 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   useEffect(() => {
     if (!terminalRef.current || terminalInstance.current) return
 
+    const container = terminalRef.current
+
     const term = new Terminal({
-      fontSize: 14,
-      fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+      fontSize: useTerminalThemeStore.getState().fontSize,
+      fontFamily: useTerminalThemeStore.getState().fontFamily,
       cursorBlink: true,
       cursorStyle: 'block',
       scrollback: 50000,
@@ -220,7 +216,6 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     term.loadAddon(fitAddon)
     term.loadAddon(webLinksAddon)
     term.loadAddon(searchAddon)
-    term.open(terminalRef.current)
 
     // 自定义快捷键拦截：返回 false 阻止 xterm 处理，交给我们的 UI 逻辑
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
@@ -283,29 +278,6 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
       return true
     })
 
-    terminalInstance.current = term
-    fitAddonRef.current = fitAddon
-    searchAddonRef.current = searchAddon
-
-    // 延迟 fit，确保 DOM 已完成布局
-    requestAnimationFrame(() => {
-      try { 
-        fitAddon.fit() 
-        const dims = fitAddon.proposeDimensions()
-        if (dims) {
-          setTerminalSize({ cols: dims.cols || 80, rows: dims.rows || 24 })
-        }
-      } catch { /* 容器尚无尺寸时忽略 */ }
-    })
-
-    // 显示欢迎信息
-    
-    term.writeln('')
-    term.writeln('\x1b[1;34m========================================\x1b[0m')
-    term.writeln('\x1b[1;34m       SSHTools Terminal\x1b[0m')
-    term.writeln('\x1b[1;34m========================================\x1b[0m')
-    term.writeln('')
-
     // 处理终端输入
     term.onData((data) => {
       if (connectionIdRef.current && isConnectedRef.current) {
@@ -314,7 +286,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         // 断开连接后，按回车触发重连
         if (onReconnectRef.current) {
           term.writeln('')
-          term.writeln('\x1b[36m正在重新连接...\x1b[0m')
+          term.writeln('\x1b[36m── 正在重新连接... ──\x1b[0m')
           onReconnectRef.current()
         }
       }
@@ -350,11 +322,42 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     const resizeObserver = new ResizeObserver(() => {
       handleResize()
     })
-    if (terminalRef.current) {
-      resizeObserver.observe(terminalRef.current)
+
+    // 等容器有尺寸后再 open 终端，避免 xterm 渲染器初始化失败
+    let cancelled = false
+    const openWhenReady = () => {
+      if (cancelled) return
+      if (container.clientWidth === 0 || container.clientHeight === 0) {
+        requestAnimationFrame(openWhenReady)
+        return
+      }
+
+      term.open(container)
+      terminalInstance.current = term
+      fitAddonRef.current = fitAddon
+      searchAddonRef.current = searchAddon
+
+      try {
+        fitAddon.fit()
+        const dims = fitAddon.proposeDimensions()
+        if (dims) {
+          setTerminalSize({ cols: dims.cols || 80, rows: dims.rows || 24 })
+        }
+      } catch { /* ignore */ }
+
+      // 显示欢迎信息
+      term.writeln('')
+      term.writeln('\x1b[1;34m========================================\x1b[0m')
+      term.writeln('\x1b[1;34m       SSHTools Terminal\x1b[0m')
+      term.writeln('\x1b[1;34m========================================\x1b[0m')
+      term.writeln('')
+
+      resizeObserver.observe(container)
     }
+    requestAnimationFrame(openWhenReady)
 
     return () => {
+      cancelled = true
       window.removeEventListener('resize', handleResize)
       resizeObserver.disconnect()
       term.dispose()
@@ -404,17 +407,25 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }
 
     const handleSSHDisconnected = (data: { id: string }) => {
-      if (data.id === connectionId && terminalInstance.current) {
-        terminalInstance.current.writeln('')
-        terminalInstance.current.writeln('\x1b[33m连接已断开，按 Enter 重新连接\x1b[0m')
+      if (data.id === connectionId) {
+        // 更新 store 状态为断开，使 isConnectedRef 在下次渲染时变为 false
+        useConnectionStore.getState().updateConnection(connectionId, { status: 'disconnected' })
+        if (terminalInstance.current) {
+          terminalInstance.current.writeln('')
+          terminalInstance.current.writeln('\x1b[33m── 连接已断开 ──\x1b[0m')
+          terminalInstance.current.writeln('\x1b[33m按 Enter 键重新连接，或点击工具栏「重连」按钮\x1b[0m')
+        }
       }
     }
 
     const handleSSHError = (data: { id: string; error: string }) => {
-      if (data.id === connectionId && terminalInstance.current) {
-        terminalInstance.current.writeln('')
-        terminalInstance.current.writeln(`\x1b[31m错误: ${data.error}\x1b[0m`)
-        terminalInstance.current.writeln('\x1b[33m按 Enter 重新连接\x1b[0m')
+      if (data.id === connectionId) {
+        useConnectionStore.getState().updateConnection(connectionId, { status: 'error', error: data.error })
+        if (terminalInstance.current) {
+          terminalInstance.current.writeln('')
+          terminalInstance.current.writeln(`\x1b[31m── 连接错误: ${data.error} ──\x1b[0m`)
+          terminalInstance.current.writeln('\x1b[33m按 Enter 键重新连接，或点击工具栏「重连」按钮\x1b[0m')
+        }
       }
     }
 
@@ -460,9 +471,81 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   // 主题/配色变化时更新终端
   useEffect(() => {
     if (terminalInstance.current) {
-      terminalInstance.current.options.theme = terminalColorScheme
+      try {
+        terminalInstance.current.options.theme = terminalColorScheme
+      } catch { /* 终端未渲染时忽略 */ }
     }
   }, [terminalColorScheme])
+
+  // 全局字体大小变化时更新终端
+  useEffect(() => {
+    if (terminalInstance.current) {
+      try {
+        terminalInstance.current.options.fontSize = fontSize
+      } catch { /* ignore */ }
+      // 仅在终端可见时重新 fit
+      if (isActive) {
+        setTimeout(() => {
+          try {
+            if (wordWrapRef.current) {
+              fitAddonRef.current?.fit()
+            } else if (terminalInstance.current && fitAddonRef.current) {
+              const dims = fitAddonRef.current.proposeDimensions()
+              if (dims) {
+                terminalInstance.current.resize(500, dims.rows || 24)
+              }
+            }
+          } catch { /* 容器不可见时忽略 */ }
+        }, 0)
+      }
+    }
+  }, [fontSize, isActive])
+
+  // 全局字体变化时更新终端
+  useEffect(() => {
+    if (terminalInstance.current) {
+      try {
+        terminalInstance.current.options.fontFamily = fontFamily
+      } catch { /* ignore */ }
+      if (isActive) {
+        setTimeout(() => {
+          try {
+            if (wordWrapRef.current) {
+              fitAddonRef.current?.fit()
+            } else if (terminalInstance.current && fitAddonRef.current) {
+              const dims = fitAddonRef.current.proposeDimensions()
+              if (dims) {
+                terminalInstance.current.resize(500, dims.rows || 24)
+              }
+            }
+          } catch { /* ignore */ }
+        }, 0)
+      }
+    }
+  }, [fontFamily, isActive])
+
+  // 全局换行设置变化时更新终端（仅在当前标签页可见时执行）
+  useEffect(() => {
+    if (!terminalInstance.current || !fitAddonRef.current || !isActive) return
+    try {
+      if (!wordWrap) {
+        const rows = terminalInstance.current.rows
+        terminalInstance.current.resize(500, rows)
+        if (connectionIdRef.current && isConnectedRef.current) {
+          window.electronAPI.sshResize(connectionIdRef.current, 500, rows)
+        }
+      } else {
+        fitAddonRef.current.fit()
+        const dims = fitAddonRef.current.proposeDimensions()
+        if (dims && connectionIdRef.current && isConnectedRef.current) {
+          window.electronAPI.sshResize(connectionIdRef.current, dims.cols || 80, dims.rows || 24)
+        }
+      }
+    } catch { /* ignore */ }
+    if (terminalRef.current) {
+      terminalRef.current.classList.toggle('no-wrap', !wordWrap)
+    }
+  }, [wordWrap, isActive])
 
   // 右键菜单处理
   useEffect(() => {
@@ -486,61 +569,18 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     return () => document.removeEventListener('click', handleClick)
   }, [contextMenuPos])
 
-  // 切换自动换行（通过改变终端列数实现）
+  // 切换自动换行
   const toggleWordWrap = () => {
-    const newValue = !wordWrap
-    setWordWrap(newValue)
-    wordWrapRef.current = newValue
-
-    if (terminalInstance.current && fitAddonRef.current) {
-      if (!newValue) {
-        // 不换行：设置很大的列数，启用水平滚动
-        const rows = terminalInstance.current.rows
-        terminalInstance.current.resize(500, rows)
-        if (connectionIdRef.current && isConnectedRef.current) {
-          window.electronAPI.sshResize(connectionIdRef.current, 500, rows)
-        }
-      } else {
-        // 换行：通过 FitAddon 恢复正常列数
-        fitAddonRef.current.fit()
-        const dims = fitAddonRef.current.proposeDimensions()
-        if (dims && connectionIdRef.current && isConnectedRef.current) {
-          window.electronAPI.sshResize(connectionIdRef.current, dims.cols || 80, dims.rows || 24)
-        }
-      }
-    }
-
-    // 切换 CSS 类以启用/禁用水平滚动
-    if (terminalRef.current) {
-      terminalRef.current.classList.toggle('no-wrap', !newValue)
-    }
+    setWordWrap(!wordWrap)
   }
 
-  // 切换"输出时自动滚动到底部"
-  const scrollOnOutputRef = useRef(true)
-  const toggleScrollOnOutput = () => {
-    const newValue = !scrollOnOutput
-    setScrollOnOutput(newValue)
-    scrollOnOutputRef.current = newValue
-  }
+  // scrollOnOutput 通过 ref 访问最新值（闭包安全）
+  const scrollOnOutputRef = useRef(scrollOnOutput)
+  scrollOnOutputRef.current = scrollOnOutput
 
   // 调整字体大小（delta=0 表示重置为默认 14）
   const changeFontSize = (delta: number) => {
-    const newSize = delta === 0 ? 14 : Math.max(8, Math.min(32, fontSize + delta))
-    setFontSize(newSize)
-    if (terminalInstance.current) {
-      terminalInstance.current.options.fontSize = newSize
-      setTimeout(() => {
-        if (wordWrapRef.current) {
-          fitAddonRef.current?.fit()
-        } else if (terminalInstance.current && fitAddonRef.current) {
-          const dims = fitAddonRef.current.proposeDimensions()
-          if (dims) {
-            terminalInstance.current.resize(500, dims.rows || 24)
-          }
-        }
-      }, 0)
-    }
+    setFontSize(delta === 0 ? 14 : fontSize + delta)
   }
 
   // 更新快捷键回调 refs
@@ -769,10 +809,6 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     ] : []),
   ]
 
-  // 选择配色预设
-  const selectPreset = (id: string) => {
-    setPreset(actualTheme, id)
-  }
 
   return (
     <div className="terminal-panel">
@@ -944,14 +980,6 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             </Tooltip>
           )}
 
-          <Tooltip title="终端设置">
-            <Button
-              icon={<SettingOutlined />}
-              size="small"
-              type={settingsOpen ? 'primary' : 'default'}
-              onClick={() => setSettingsOpen(!settingsOpen)}
-            />
-          </Tooltip>
         </div>
       </div>
 
@@ -962,25 +990,6 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           loading={historyLoading}
           onExecute={executeHistoryCommand}
           onClose={() => setHistoryOpen(false)}
-        />
-      )}
-
-      {/* 设置面板 */}
-      {settingsOpen && (
-        <TerminalSettingsPanel
-          wordWrap={wordWrap}
-          scrollOnOutput={scrollOnOutput}
-          fontSize={fontSize}
-          actualTheme={actualTheme}
-          currentPresetId={currentPresetId}
-          currentPresetsMap={currentPresetsMap}
-          currentCustomColors={currentCustomColors}
-          onToggleWordWrap={toggleWordWrap}
-          onToggleScrollOnOutput={toggleScrollOnOutput}
-          onChangeFontSize={changeFontSize}
-          onSelectPreset={selectPreset}
-          onSetCustomColor={setCustomColor}
-          onClose={() => setSettingsOpen(false)}
         />
       )}
 

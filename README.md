@@ -148,6 +148,52 @@
 | macOS | `.dmg` / `.zip` |
 | Linux | `.AppImage` / `.deb` / `.rpm` |
 
+### 安装说明
+
+> 本项目为开源软件，尚未购买代码签名证书，安装时系统可能弹出安全警告，这是正常现象，请按以下方式处理：
+
+<details>
+<summary><b>Windows 安装提示</b></summary>
+
+运行安装包后，Windows SmartScreen 可能弹出 **"Windows 已保护你的电脑"** 提示：
+
+1. 点击 **「更多信息」**
+2. 点击 **「仍要运行」** 即可继续安装
+
+> 如果使用便携版（.zip），解压后直接运行 `.exe` 即可，无需安装。
+
+</details>
+
+<details>
+<summary><b>macOS 安装提示</b></summary>
+
+打开 `.dmg` 拖入应用后，首次启动可能提示 **"无法打开，因为无法验证开发者"**：
+
+**方法一（推荐）：**
+1. 打开 **系统设置 → 隐私与安全性**
+2. 在底部找到被阻止的应用提示，点击 **「仍要打开」**
+
+**方法二（命令行）：**
+```bash
+sudo xattr -rd com.apple.quarantine /Applications/SSHTools.app
+```
+
+</details>
+
+<details>
+<summary><b>Linux 安装提示</b></summary>
+
+Linux 无签名限制。`.AppImage` 需要先添加执行权限：
+
+```bash
+chmod +x SSHTools-*.AppImage
+./SSHTools-*.AppImage
+```
+
+`.deb` / `.rpm` 包使用系统包管理器直接安装即可。
+
+</details>
+
 ### 从源码构建
 
 ```bash
