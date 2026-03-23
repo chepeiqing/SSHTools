@@ -24,17 +24,21 @@ import {
   UpOutlined,
   DownOutlined,
   CloseOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import { useThemeStore } from '../../stores/themeStore'
 import { useConnectionStore } from '../../stores/connectionStore'
+import { useServerStore } from '../../stores/serverStore'
 import { useTerminalThemeStore, getTerminalColorScheme, darkPresets, lightPresets } from '../../stores/terminalThemeStore'
 import TerminalSettingsPanel from './TerminalSettingsPanel'
 import TerminalHistoryPanel from './TerminalHistoryPanel'
+import QuickCommandsPanel from './QuickCommandsPanel'
 import '@xterm/xterm/css/xterm.css'
 import './index.css'
 
 interface TerminalPanelProps {
   connectionId?: string
+  serverId?: string
   isActive?: boolean
   sftpVisible?: boolean
   onToggleSFTP?: (path?: string) => void
@@ -48,6 +52,7 @@ interface TerminalPanelProps {
 
 const TerminalPanel: React.FC<TerminalPanelProps> = ({
   connectionId,
+  serverId,
   isActive = true,
   sftpVisible = false,
   onToggleSFTP,
@@ -110,6 +115,10 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   // 设置面板
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // 快捷命令面板
+  const [quickCmdsOpen, setQuickCmdsOpen] = useState(false)
+  const { servers, updateServer } = useServerStore()
 
   // 终端配色 store
   const terminalThemeState = useTerminalThemeStore()
@@ -910,6 +919,17 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             </Tooltip>
           )}
 
+          {connection && serverId && (
+            <Tooltip title="快捷命令">
+              <Button
+                icon={<ThunderboltOutlined />}
+                size="small"
+                type={quickCmdsOpen ? 'primary' : 'default'}
+                onClick={() => setQuickCmdsOpen(!quickCmdsOpen)}
+              />
+            </Tooltip>
+          )}
+
           {connection && onToggleSFTP && (
             <Tooltip title={sftpVisible ? 'SFTP 定位到当前目录' : '打开 SFTP'}>
               <Button
@@ -961,6 +981,23 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           onSelectPreset={selectPreset}
           onSetCustomColor={setCustomColor}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {/* 快捷命令面板 */}
+      {quickCmdsOpen && serverId && (
+        <QuickCommandsPanel
+          commands={servers.find(s => s.id === serverId)?.quickCommands || []}
+          onExecute={(cmd) => {
+            if (connectionId && isConnected) {
+              window.electronAPI.sshWrite(connectionId, cmd)
+            }
+            terminalInstance.current?.focus()
+          }}
+          onSave={(cmds) => {
+            updateServer(serverId, { quickCommands: cmds })
+          }}
+          onClose={() => setQuickCmdsOpen(false)}
         />
       )}
 

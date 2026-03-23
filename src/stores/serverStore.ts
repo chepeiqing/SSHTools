@@ -16,6 +16,7 @@ export interface ServerConfig {
   groupId?: string
   description?: string
   tags?: string[]
+  quickCommands?: { name: string; command: string }[]
   lastConnectedAt?: number
   terminal: {
     fontSize: number

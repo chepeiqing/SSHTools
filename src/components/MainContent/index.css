@@ -239,18 +239,50 @@ body.tab-dragging-active * {
   border-top: 1px solid var(--border-color);
 }
 
-/* Detail Panel Animation */
+/* Detail Panel Container */
 .detail-panel-container {
-  width: 0;
   height: 100%;
   overflow: hidden;
-  transition: width 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   background: var(--bg-secondary);
   flex-shrink: 0;
+  position: relative;
+  display: flex;
 }
 
-.detail-panel-container.visible {
-  width: 300px;
+.detail-panel-drag-handle {
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: var(--border-color);
+  flex-shrink: 0;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.detail-panel-drag-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 36px;
+  background-image: radial-gradient(circle, var(--text-tertiary) 1px, transparent 1px);
+  background-size: 2px 6px;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.detail-panel-drag-handle:hover,
+.detail-panel-drag-handle.resizing {
+  background: var(--primary-color);
+}
+
+.detail-panel-drag-handle:hover::after,
+.detail-panel-drag-handle.resizing::after {
+  opacity: 1;
+  background-image: radial-gradient(circle, #fff 1px, transparent 1px);
 }
 
 /* ==================== Home Page ==================== */
@@ -314,57 +346,71 @@ body.tab-dragging-active * {
   border-color: var(--primary-color);
 }
 
-/* 快捷入口 */
-.home-shortcuts {
+/* 功能模块网格 */
+.home-modules {
   width: 100%;
   max-width: 720px;
   margin-bottom: 20px;
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
   flex-shrink: 0;
 }
 
-.shortcut-item {
+.module-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 14px 20px;
+  gap: 8px;
+  padding: 16px 12px;
+  min-width: 80px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all 0.2s ease;
-  flex: 1;
 }
 
-.shortcut-item:hover {
+.module-item:hover {
   border-color: var(--primary-color);
   background: var(--primary-soft);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 
-.shortcut-icon {
-  font-size: 24px;
-  color: var(--primary-color);
-  flex-shrink: 0;
+.module-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-.shortcut-info {
+.module-item.disabled:hover {
+  border-color: var(--border-color);
+  background: var(--bg-secondary);
+  transform: none;
+  box-shadow: none;
+}
+
+.module-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--primary-soft);
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--primary-color);
 }
 
-.shortcut-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-color);
+.module-item.disabled .module-icon {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
 }
 
-.shortcut-desc {
+.module-label {
   font-size: 12px;
-  color: var(--text-secondary);
+  font-weight: 500;
+  color: var(--text-color);
 }
 
 .home-empty {

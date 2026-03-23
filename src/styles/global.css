@@ -807,3 +807,43 @@ html, body, #root {
   font-size: 13px;
   min-width: 70px;
 }
+
+/* 快捷指令提示步骤 */
+.shortcut-tip-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.shortcut-tip-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-color);
+  line-height: 1.6;
+}
+
+.shortcut-tip-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary-color);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shortcut-tip-note {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}

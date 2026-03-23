@@ -1,0 +1,249 @@
+.doc-panel {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-color);
+  display: flex;
+  justify-content: center;
+  padding: 32px 24px;
+}
+
+.doc-container {
+  width: 100%;
+  max-width: 800px;
+}
+
+.doc-header {
+  text-align: center;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.doc-main-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0 0 8px;
+}
+
+.doc-version {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+/* 目录 */
+.doc-toc {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 32px;
+}
+
+.doc-toc h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0 0 12px;
+}
+
+.doc-toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.doc-toc a {
+  font-size: 13px;
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.doc-toc a:hover {
+  opacity: 0.7;
+  text-decoration: underline;
+}
+
+/* 章节 */
+.doc-section {
+  margin-bottom: 36px;
+}
+
+.doc-section h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--primary-color);
+  display: inline-block;
+}
+
+.doc-section h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 20px 0 10px;
+}
+
+.doc-section p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: 0 0 10px;
+}
+
+.doc-section ul,
+.doc-section ol {
+  padding-left: 20px;
+  margin: 0 0 12px;
+}
+
+.doc-section li {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.doc-section li strong {
+  color: var(--text-color);
+}
+
+.doc-section code {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  color: var(--primary-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.doc-section kbd {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-color);
+  padding: 2px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* 步骤 */
+.doc-steps {
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+}
+
+.doc-steps li {
+  position: relative;
+  padding-left: 32px;
+  margin-bottom: 10px;
+}
+
+.doc-steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary-color);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 表格 */
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 10px 0 16px;
+}
+
+.doc-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  color: var(--text-color);
+  font-weight: 600;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.doc-table td {
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.doc-table tr:hover td {
+  background: var(--hover-bg);
+}
+
+/* 标签 */
+.doc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 16px;
+}
+
+.doc-tag {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+/* 注释 */
+.doc-note {
+  font-size: 12px !important;
+  color: var(--text-tertiary) !important;
+  font-style: italic;
+}
+
+/* 底部 */
+.doc-footer {
+  text-align: center;
+  padding: 24px 0;
+  border-top: 1px solid var(--border-color);
+  margin-top: 16px;
+}
+
+.doc-footer p {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 0 0 4px;
+}
+
+/* 滚动条 */
+.doc-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.doc-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.doc-panel::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.doc-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}

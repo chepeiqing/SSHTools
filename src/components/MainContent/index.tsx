@@ -18,6 +18,9 @@ import {
   LockOutlined,
   FileTextOutlined,
   CodeOutlined,
+  ThunderboltOutlined,
+  SettingOutlined,
+  BookOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import TerminalPanel from '../TerminalPanel'
@@ -27,6 +30,7 @@ import EditorPanel from '../EditorPanel'
 import ServerTree from '../ServerTree'
 import NewSessionModal from '../SessionManager/NewSessionModal'
 import CommandsPanel from '../CommandsPanel'
+import DocPanel from '../DocPanel'
 import { useConnectionStore, connectServer, disconnectServer } from '../../stores/connectionStore'
 import { useServerStore } from '../../stores/serverStore'
 import { onSessionConnect } from '../SessionManager'
@@ -36,7 +40,7 @@ import './index.css'
 interface SerializedTab {
   key: string
   label: string
-  type: 'home' | 'terminal' | 'editor' | 'commands'
+  type: 'home' | 'terminal' | 'editor' | 'commands' | 'doc'
   serverId?: string
   serverName?: string
   connectionId?: string
@@ -46,7 +50,7 @@ interface SerializedTab {
 interface TabItem {
   key: string
   label: string
-  type: 'home' | 'terminal' | 'editor' | 'commands'
+  type: 'home' | 'terminal' | 'editor' | 'commands' | 'doc'
   serverId?: string
   serverName?: string
   connectionId?: string
@@ -66,14 +70,14 @@ const HOME_TAB_KEY = '__home__'
 
 // 从跨窗口传输的数据反序列化为 TabItem
 function deserializeTab(tabData: Record<string, unknown>): TabItem {
-  const type = tabData.type as 'terminal' | 'editor' | 'commands'
-  
-  // commands 类型特殊处理
-  if (type === 'commands') {
+  const type = tabData.type as 'terminal' | 'editor' | 'commands' | 'doc'
+
+  // commands / doc 类型特殊处理
+  if (type === 'commands' || type === 'doc') {
     return {
       key: tabData.key as string,
-      label: tabData.label as string || '常用命令',
-      type: 'commands',
+      label: tabData.label as string || (type === 'commands' ? '常用命令' : '使用文档'),
+      type,
       sftpVisible: false,
       sftpHeight: 0,
       sftpNavSeq: 0,
@@ -146,6 +150,7 @@ const MainContent: React.FC<MainContentProps> = ({
   const activeKeyRef = useRef(activeKey)
   activeKeyRef.current = activeKey
   const [detailPanelVisible, setDetailPanelVisible] = useState(true)
+  const [detailPanelWidth, setDetailPanelWidth] = useState(300)
   const { message, modal } = App.useApp()
 
   const { servers, groups, touchServer, updateServer, addServer, addGroup } = useServerStore()
@@ -175,11 +180,11 @@ const MainContent: React.FC<MainContentProps> = ({
   const [newGroupVisible, setNewGroupVisible] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
 
-  // 详情面板展开/收起后，通知终端 refit（CSS transition 300ms，延迟 350ms 触发）
+  // 详情面板展开/收起后，通知终端 refit
   useEffect(() => {
     const timer = setTimeout(() => {
       window.dispatchEvent(new Event('resize'))
-    }, 350)
+    }, 50)
     return () => clearTimeout(timer)
   }, [detailPanelVisible])
 
@@ -606,6 +611,28 @@ const MainContent: React.FC<MainContentProps> = ({
       key: tabKey,
       label: '常用命令',
       type: 'commands',
+      sftpVisible: false,
+      sftpHeight: 0,
+      sftpNavSeq: 0,
+      detailPanelVisible: false,
+    }
+    setTabs(prev => [...prev, newTab])
+    setActiveKey(tabKey)
+  }
+
+  // 打开使用文档
+  const openDocTab = () => {
+    const existingTab = tabs.find(t => t.type === 'doc')
+    if (existingTab) {
+      setActiveKey(existingTab.key)
+      return
+    }
+
+    const tabKey = `doc-${Date.now()}`
+    const newTab: TabItem = {
+      key: tabKey,
+      label: '使用文档',
+      type: 'doc',
       sftpVisible: false,
       sftpHeight: 0,
       sftpNavSeq: 0,
@@ -1170,6 +1197,15 @@ const MainContent: React.FC<MainContentProps> = ({
       )
     }
 
+    if (tab.type === 'doc') {
+      return (
+        <div className="tab-label">
+          <BookOutlined />
+          <span className="tab-name">{tab.label}</span>
+        </div>
+      )
+    }
+
     return (
       <Dropdown
         menu={buildContextMenu(tab.key)}
@@ -1246,9 +1282,11 @@ const MainContent: React.FC<MainContentProps> = ({
     key: tab.key,
     label: renderTabLabel(tab),
     children: tab.type === 'home' ? (
-      <HomePage onConnect={connectAndCreateTab} onNewSession={() => setNewSessionVisible(true)} onOpenCommands={openCommandsTab} />
+      <HomePage onConnect={connectAndCreateTab} onNewSession={() => setNewSessionVisible(true)} onOpenCommands={openCommandsTab} onOpenDoc={openDocTab} />
     ) : tab.type === 'commands' ? (
       <CommandsPanel />
+    ) : tab.type === 'doc' ? (
+      <DocPanel />
     ) : tab.type === 'editor' ? (
       <EditorPanel
         connectionId={tab.connectionId!}
@@ -1326,15 +1364,17 @@ const MainContent: React.FC<MainContentProps> = ({
         }}
       />
 
-      {/* 右侧详情面板容器 (带动画) */}
-      <div className={`detail-panel-container ${showDetailPanel ? 'visible' : ''}`}>
-        {activeTab?.type === 'terminal' && (
-          <ConnectionDetailPanel
-            connectionId={activeTab.connectionId}
-            serverName={activeTab.serverName}
-          />
-        )}
-      </div>
+      {/* 右侧详情面板容器 (可拖拽宽度) */}
+      {showDetailPanel && (
+        <DetailPanelResizer width={detailPanelWidth} onWidthChange={setDetailPanelWidth}>
+          {activeTab?.type === 'terminal' && (
+            <ConnectionDetailPanel
+              connectionId={activeTab.connectionId}
+              serverName={activeTab.serverName}
+            />
+          )}
+        </DetailPanelResizer>
+      )}
 
       {/* 密码输入弹窗 */}
       <Modal
@@ -1465,27 +1505,42 @@ interface HomePageProps {
   onConnect: (serverId: string) => void
   onNewSession: () => void
   onOpenCommands: () => void
+  onOpenDoc: () => void
 }
 
-const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenCommands }) => {
+const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenCommands, onOpenDoc }) => {
   const { servers } = useServerStore()
   const [searchKeyword, setSearchKeyword] = useState('')
+  const [shortcutTipOpen, setShortcutTipOpen] = useState(false)
 
   return (
     <div className="home-page">
       <div className="home-hero">
         <img src="./icon.svg" alt="SSHTools" className="home-hero-logo" />
         <h1 className="home-title">SSHTools</h1>
-        <p className="home-subtitle">双击服务器卡片快速连接，右键管理会话和分组</p>
+        <p className="home-subtitle">双击服务器卡片快速连接，终端内可通过 <ThunderboltOutlined /> 管理快捷命令</p>
       </div>
 
-      <div className="home-shortcuts">
-        <div className="shortcut-item" onClick={onOpenCommands}>
-          <CodeOutlined className="shortcut-icon" />
-          <div className="shortcut-info">
-            <span className="shortcut-title">常用命令</span>
-            <span className="shortcut-desc">运维人员常用命令速查</span>
-          </div>
+      <div className="home-modules">
+        <div className="module-item" onClick={onNewSession}>
+          <div className="module-icon"><PlusOutlined /></div>
+          <span className="module-label">新建连接</span>
+        </div>
+        <div className="module-item" onClick={onOpenCommands}>
+          <div className="module-icon"><CodeOutlined /></div>
+          <span className="module-label">常用命令</span>
+        </div>
+        <div className="module-item" onClick={() => setShortcutTipOpen(true)}>
+          <div className="module-icon"><ThunderboltOutlined /></div>
+          <span className="module-label">快捷指令</span>
+        </div>
+        <div className="module-item" onClick={onOpenDoc}>
+          <div className="module-icon"><BookOutlined /></div>
+          <span className="module-label">使用文档</span>
+        </div>
+        <div className="module-item disabled" title="敬请期待">
+          <div className="module-icon"><SettingOutlined /></div>
+          <span className="module-label">全局设置</span>
         </div>
       </div>
 
@@ -1517,6 +1572,49 @@ const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenComm
           />
         </div>
       )}
+
+      <Modal
+        open={shortcutTipOpen}
+        onCancel={() => setShortcutTipOpen(false)}
+        footer={null}
+        centered
+        width={420}
+        className="credential-modal"
+        closable
+        destroyOnHidden
+      >
+        <div className="cred-modal-container">
+          <div className="cred-modal-header">
+            <div className="cred-modal-icon">
+              <ThunderboltOutlined />
+            </div>
+            <div className="cred-modal-title-group">
+              <h3 className="cred-modal-title">快捷指令</h3>
+              <p className="cred-modal-subtitle">每个服务器连接可自定义快捷指令</p>
+            </div>
+          </div>
+          <div className="cred-modal-body">
+            <div className="shortcut-tip-steps">
+              <div className="shortcut-tip-step">
+                <span className="shortcut-tip-num">1</span>
+                <span>连接服务器后，在终端工具栏点击 <ThunderboltOutlined style={{ color: 'var(--primary-color)' }} /> 图标</span>
+              </div>
+              <div className="shortcut-tip-step">
+                <span className="shortcut-tip-num">2</span>
+                <span>点击 <PlusOutlined style={{ color: 'var(--primary-color)' }} /> 添加自定义命令（名称 + 命令内容）</span>
+              </div>
+              <div className="shortcut-tip-step">
+                <span className="shortcut-tip-num">3</span>
+                <span>点击命令即可输入到终端，回车由你决定</span>
+              </div>
+            </div>
+            <p className="shortcut-tip-note">快捷指令按服务器独立存储，不同服务器可配置不同的命令集。</p>
+          </div>
+          <div className="cred-modal-footer">
+            <Button type="primary" onClick={() => setShortcutTipOpen(false)}>知道了</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -1586,7 +1684,6 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
   }, [isResizing, onUpdateSFTPHeight])
 
   const sftpReady = tab.sftpVisible && tab.sftpHeight > 0
-  const terminalHeight = sftpReady ? `calc(100% - ${tab.sftpHeight}px - 6px)` : '100%'
 
   // 获取服务器配置
   const { servers } = useServerStore()
@@ -1595,9 +1692,10 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
   return (
     <div ref={containerRef} className="session-tab-content">
       {/* 终端面板 */}
-      <div className="terminal-wrapper" style={{ height: terminalHeight }}>
+      <div className="terminal-wrapper" style={sftpReady ? { height: `calc(100% - ${tab.sftpHeight}px - 6px)`, flex: 'none' } : undefined}>
         <TerminalPanel
           connectionId={tab.connectionId}
+          serverId={tab.serverId}
           isActive={isActive}
           sftpVisible={tab.sftpVisible}
           onToggleSFTP={onToggleSFTP}
@@ -1626,6 +1724,60 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// 右侧详情面板拖拽调整宽度
+interface DetailPanelResizerProps {
+  width: number
+  onWidthChange: (width: number) => void
+  children: React.ReactNode
+}
+
+const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthChange, children }) => {
+  const [isResizing, setIsResizing] = useState(false)
+  const startXRef = useRef(0)
+  const startWidthRef = useRef(0)
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+    startXRef.current = e.clientX
+    startWidthRef.current = width
+  }, [width])
+
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // 向左拖 → 宽度增大
+      const diff = startXRef.current - e.clientX
+      const newWidth = Math.max(240, Math.min(500, startWidthRef.current + diff))
+      onWidthChange(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      // 拖拽完成后通知终端 refit
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing, onWidthChange])
+
+  return (
+    <div className="detail-panel-container visible" style={{ width }}>
+      <div
+        className={`detail-panel-drag-handle ${isResizing ? 'resizing' : ''}`}
+        onMouseDown={handleMouseDown}
+      />
+      {children}
     </div>
   )
 }
