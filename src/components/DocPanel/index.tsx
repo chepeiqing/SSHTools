@@ -6,7 +6,7 @@ const DocPanel: React.FC = () => {
       <div className="doc-container">
         <div className="doc-header">
           <h1 className="doc-main-title">SSHTools 使用文档</h1>
-          <p className="doc-version">v1.0.0</p>
+          <p className="doc-version">v{__APP_VERSION__}</p>
         </div>
 
         <nav className="doc-toc">

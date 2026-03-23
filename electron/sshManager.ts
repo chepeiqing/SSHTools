@@ -56,6 +56,10 @@ class SSHManager {
   // shell 输出缓冲区（用于跨窗口迁移时回放终端内容）
   private shellBuffers: Map<string, string> = new Map()
   private static MAX_SHELL_BUFFER = 100 * 1024 // 100KB
+  // SSH banner 消息（认证阶段服务器公告）
+  private sshBanners: Map<string, string> = new Map()
+  // shell 初始输出阶段标志（缓冲 MOTD 等初始数据，不走 sendToConnection）
+  private shellInitialPhase: Set<string> = new Set()
   // 连接创建时间，用于清理残留的测试连接
   private connectionCreatedAt: Map<string, number> = new Map()
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
@@ -228,6 +232,11 @@ class SSHManager {
         }
       })
 
+      // 捕获 SSH 认证阶段的 banner 消息（如服务器公告、安全提示）
+      conn.on('banner', (message: string) => {
+        this.sshBanners.set(id, message)
+      })
+
       try {
         conn.connect(sshConfig)
       } catch (err: unknown) {
@@ -245,6 +254,8 @@ class SSHManager {
       this.shellStreams.delete(id)
     }
     this.shellBuffers.delete(id)
+    this.sshBanners.delete(id)
+    this.shellInitialPhase.delete(id)
 
     // 关闭 SFTP
     const sftp = this.sftpConnections.get(id)
@@ -270,7 +281,7 @@ class SSHManager {
   }
 
   // 启动 Shell
-  startShell(id: string): Promise<{ success: boolean; reused?: boolean; error?: string }> {
+  startShell(id: string): Promise<{ success: boolean; reused?: boolean; buffer?: string; error?: string }> {
     return new Promise((resolve) => {
       const conn = this.connections.get(id)
       if (!conn) {
@@ -284,12 +295,68 @@ class SSHManager {
         return
       }
 
+      // 标记初始缓冲阶段：shell 打开后短暂缓冲，不走 sendToConnection
+      this.shellInitialPhase.add(id)
+
+      // 通过独立 exec 通道获取 MOTD 和登录信息（部分服务器 sshd 配置 PrintMotd=no，
+      // PAM 对 ssh2 库不生效，需要主动读取）
+      const motdPromise = new Promise<string>((motdResolve) => {
+        conn.exec(
+          'cat /etc/motd 2>/dev/null;' +
+          'for f in /etc/motd.d/*; do [ -f "$f" ] && cat "$f" 2>/dev/null; done;' +
+          'cat /run/motd.dynamic 2>/dev/null',
+          (execErr, execStream) => {
+            if (execErr) { motdResolve(''); return }
+            let output = ''
+            execStream.on('data', (d: Buffer) => { output += d.toString('utf-8') })
+            execStream.on('close', () => motdResolve(output))
+            setTimeout(() => motdResolve(output), 2000)
+          }
+        )
+      })
+
+      const loginInfoPromise = new Promise<string>((loginResolve) => {
+        conn.exec(
+          'lastlog -u $(whoami) 2>/dev/null | tail -1;' +
+          'echo "---";' +
+          'faillog -u $(whoami) 2>/dev/null | tail -1',
+          (execErr, execStream) => {
+            if (execErr) { loginResolve(''); return }
+            let output = ''
+            execStream.on('data', (d: Buffer) => { output += d.toString('utf-8') })
+            execStream.on('close', () => {
+              // 解析 lastlog 和 faillog 输出
+              const parts = output.split('---')
+              const lines: string[] = []
+              const lastlogLine = (parts[0] || '').trim()
+              if (lastlogLine && !lastlogLine.startsWith('Username') && !lastlogLine.startsWith('用户名')) {
+                // lastlog 格式: "root  pts/0  1.2.3.4  Mon Mar 23 22:20:39 +0800 2026"
+                const match = lastlogLine.match(/\S+\s+\S+\s+(\S+)\s+(.+)/)
+                if (match) {
+                  lines.push(`Last login: ${match[2].trim()} from ${match[1]}`)
+                }
+              }
+              const faillogLine = (parts[1] || '').trim()
+              if (faillogLine && !faillogLine.startsWith('Login') && !faillogLine.startsWith('登录')) {
+                const failMatch = faillogLine.match(/\S+\s+(\d+)/)
+                if (failMatch && parseInt(failMatch[1]) > 0) {
+                  lines.push(`There were ${failMatch[1]} failed login attempts since the last successful login.`)
+                }
+              }
+              loginResolve(lines.join('\n'))
+            })
+            setTimeout(() => loginResolve(''), 2000)
+          }
+        )
+      })
+
       conn.shell({
         term: 'xterm-256color',
         cols: 80,
         rows: 24,
       }, (err, stream) => {
         if (err) {
+          this.shellInitialPhase.delete(id)
           resolve({ success: false, error: err.message })
           return
         }
@@ -305,13 +372,17 @@ class SSHManager {
               buf = buf.slice(-SSHManager.MAX_SHELL_BUFFER)
             }
             this.shellBuffers.set(id, buf)
-            this.sendToConnection(id, 'ssh-data', { id, data: str })
+            // 初始阶段只缓冲，不转发（由 resolve 返回的 buffer 统一写入终端）
+            if (!this.shellInitialPhase.has(id)) {
+              this.sendToConnection(id, 'ssh-data', { id, data: str })
+            }
           }
         })
 
         stream.on('close', () => {
           this.shellStreams.delete(id)
           this.shellBuffers.delete(id)
+          this.shellInitialPhase.delete(id)
           this.sendToConnection(id, 'ssh-shell-closed', { id })
           // Shell 关闭后主动断开 SSH 连接（如超时 auto-logout），
           // 触发 ssh-disconnected 事件，使终端能通过回车重连
@@ -327,14 +398,33 @@ class SSHManager {
               buf = buf.slice(-SSHManager.MAX_SHELL_BUFFER)
             }
             this.shellBuffers.set(id, buf)
-            this.sendToConnection(id, 'ssh-data', { id, data: str })
+            if (!this.shellInitialPhase.has(id)) {
+              this.sendToConnection(id, 'ssh-data', { id, data: str })
+            }
           }
         })
 
         // 使用独立 Map 存储 stream，避免在 Client 上挂载私有属性
         this.shellStreams.set(id, stream)
 
-        resolve({ success: true })
+        // 等待 shell 初始输出 + MOTD exec 完成
+        const shellWait = new Promise<void>((r) => setTimeout(r, 300))
+        Promise.all([motdPromise, loginInfoPromise, shellWait]).then(([motd, loginInfo]) => {
+          this.shellInitialPhase.delete(id)
+          const banner = this.sshBanners.get(id) || ''
+          const shellBuffer = this.shellBuffers.get(id) || ''
+          // exec 通道无 PTY，\n 不会自动转为 \r\n，需手动转换以防 xterm 阶梯显示
+          const toCRLF = (s: string) => s.replace(/\r?\n/g, '\r\n')
+          // 拼接：banner + motd + 登录信息 + shell 原始输出
+          let prefix = ''
+          if (banner) prefix += toCRLF(banner)
+          if (motd.trim()) prefix += toCRLF(motd.trimEnd()) + '\r\n'
+          if (loginInfo.trim()) prefix += toCRLF(loginInfo.trimEnd()) + '\r\n\r\n'
+          resolve({
+            success: true,
+            buffer: prefix + shellBuffer,
+          })
+        })
       })
     })
   }

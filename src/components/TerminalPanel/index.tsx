@@ -347,12 +347,14 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         }
       } catch { /* ignore */ }
 
-      // 显示欢迎信息
-      term.writeln('')
-      term.writeln('\x1b[1;34m========================================\x1b[0m')
-      term.writeln('\x1b[1;34m       SSHTools Terminal\x1b[0m')
-      term.writeln('\x1b[1;34m========================================\x1b[0m')
-      term.writeln('')
+      // 显示连接信息
+      if (serverConfig) {
+        // const portStr = serverConfig.port !== 22 ? ` -p ${serverConfig.port}` : ''
+        term.writeln('')
+        term.writeln('\x1b[32m  SSHTools Terminal\x1b[0m')
+        // term.writeln(`\x1b[90m  ssh ${serverConfig.username}@${serverConfig.host}${portStr}\x1b[0m`)
+        term.writeln(`\x1b[90m  正在连接...\x1b[0m`)
+      }
 
       resizeObserver.observe(container)
     }
@@ -449,14 +451,18 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         if (!result.success) {
           terminalInstance.current?.writeln(`\x1b[31m启动 Shell 失败: ${result.error}\x1b[0m`)
         } else {
-          // 如果是复用已有 shell（跨窗口迁移），回放缓冲区内容
-          if (result.reused && terminalInstance.current) {
-            // 清除初始化时写入的欢迎信息
-            terminalInstance.current.reset()
-            // 回放缓冲的终端输出
-            if (result.buffer) {
-              terminalInstance.current.write(result.buffer)
+          // 显示连接成功提示
+          if (terminalInstance.current && !result.reused) {
+            terminalInstance.current.writeln(`\x1b[32m  连接成功\x1b[0m`)
+            terminalInstance.current.writeln('')
+          }
+          if (terminalInstance.current && result.buffer) {
+            if (result.reused) {
+              // 跨窗口迁移：清除欢迎信息，完整回放缓冲区
+              terminalInstance.current.reset()
             }
+            // 写入初始输出（SSH banner + MOTD + Last login 等）
+            terminalInstance.current.write(result.buffer)
           }
           if (fitAddonRef.current) {
             const dims = fitAddonRef.current.proposeDimensions()

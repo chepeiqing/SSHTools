@@ -370,7 +370,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ onConnect }) => {
           <div className="about-hero">
             <img src="./icon.svg" alt="SSHTools" className="about-logo" />
             <h2 className="about-app-name">SSHTools</h2>
-            <span className="about-version">v1.0.0</span>
+            <span className="about-version">v{__APP_VERSION__}</span>
           </div>
 
           <p className="about-desc">
