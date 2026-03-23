@@ -238,21 +238,25 @@ SSHTools/
 │   └── types.ts               # ElectronAPI 类型定义
 ├── src/                       # React 渲染进程
 │   ├── App.tsx                # 根布局（TitleBar + SessionManager + MainContent）
+│   ├── main.tsx               # 入口文件（字体加载、主题配置）
 │   ├── components/
-│   │   ├── TitleBar/          # 标题栏（搜索、主题、导入导出、关于）
-│   │   ├── SessionManager/    # 侧边栏（快速连接 + 服务器树）
+│   │   ├── TitleBar/          # 标题栏（搜索、导入导出、关于）
+│   │   ├── SessionManager/    # 侧边栏（快速连接 + 服务器树 + 新建会话弹窗）
 │   │   ├── MainContent/       # 标签页管理 + 首页
-│   │   ├── TerminalPanel/     # SSH 终端（xterm.js）+ 快捷指令
+│   │   ├── TerminalPanel/     # SSH 终端（xterm.js）+ 快捷指令 + 命令历史
 │   │   ├── SFTPPanel/         # SFTP 文件管理
 │   │   ├── EditorPanel/       # 远程文件在线编辑器（CodeMirror）
 │   │   ├── CommandsPanel/     # 常用命令库
 │   │   ├── DocPanel/          # 内置使用文档
+│   │   ├── SettingsModal/     # 全局设置弹窗（主题、字体、终端配色）
 │   │   ├── ServerTree/        # 服务器树形列表
-│   │   └── ConnectionDetailPanel/  # 连接详情与资源监控
+│   │   ├── ConnectionDetailPanel/  # 连接详情与资源监控
+│   │   └── ErrorBoundary.tsx  # 错误边界
 │   ├── stores/
 │   │   ├── serverStore.ts     # 服务器配置（zustand/persist）
 │   │   ├── connectionStore.ts # 运行时连接状态
-│   │   └── themeStore.ts      # 主题管理
+│   │   ├── themeStore.ts      # 主题管理
+│   │   └── terminalThemeStore.ts  # 终端主题、字体、配色预设
 │   ├── utils/
 │   │   └── crypto.ts          # AES-GCM 加解密工具
 │   ├── styles/
