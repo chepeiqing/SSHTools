@@ -42,6 +42,12 @@ export interface SystemStats {
   diskTotal: number
   diskPercent: number
   uptime: string
+  osInfo: string
+  hostname: string
+  loadAvg: string
+  networkIP: string
+  loginUsers: number
+  processCount: number
 }
 
 // Electron API 接口

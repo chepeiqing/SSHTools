@@ -50,11 +50,6 @@ function createWindow(): BrowserWindow {
   windows.add(win)
   sshManager.registerWindow(win.webContents)
 
-  // 兼容旧的 setMainWindow 调用（首个窗口）
-  if (windows.size === 1) {
-    sshManager.setMainWindow(win)
-  }
-
   // 开发环境加载本地服务器
   if (process.env.NODE_ENV === 'development') {
     win.loadURL('http://localhost:5173')
@@ -495,11 +490,16 @@ function cleanupDragState() {
   }
   dragSourceWinId = null
   lastRaisedWinId = null
+  hasLeftSource = false
 }
 
 ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: string) => {
   const sourceWin = BrowserWindow.fromWebContents(event.sender)
   if (!sourceWin) return
+
+  // 清理上一次可能残留的拖拽状态（防止快速连续拖拽时 overlay 泄漏）
+  cleanupDragState()
+
   dragSourceWinId = sourceWin.id
   lastRaisedWinId = null
   lastDragOverWinId = null
@@ -526,9 +526,6 @@ ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: stri
       <span style="font-size:10px;">⊞</span>${escaped}
     </div></body>`
   dragOverlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-
-  if (dragHoverTimer) clearInterval(dragHoverTimer)
-  if (dragOverlayTimer) clearInterval(dragOverlayTimer)
 
   // 16ms 定位悬浮窗（光标在标签左侧偏中位置，像抓着标签拖动）
   dragOverlayTimer = setInterval(() => {
@@ -573,7 +570,7 @@ ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: stri
     // 光标曾离开过源窗口 → 检查目标窗口（目标优先，解决重叠区域）
     let foundTarget = false
     for (const win of windows) {
-      if (win.id === dragSourceWinId || win.isDestroyed()) continue
+      if (win.id === dragSourceWinId || win.isDestroyed() || win.isMinimized() || !win.isVisible()) continue
       const bounds = win.getBounds()
       if (point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
           point.y >= bounds.y && point.y <= bounds.y + bounds.height) {
@@ -642,7 +639,7 @@ ipcMain.handle('tab-tear-out', async (event: IpcMainInvokeEvent, data: { tabData
   // 检查光标是否在其他窗口上方
   let targetWin: BrowserWindow | null = null
   for (const win of windows) {
-    if (win === sourceWin || win.isDestroyed()) continue
+    if (win === sourceWin || win.isDestroyed() || win.isMinimized() || !win.isVisible()) continue
     const bounds = win.getBounds()
     if (screenX >= bounds.x && screenX <= bounds.x + bounds.width &&
         screenY >= bounds.y && screenY <= bounds.y + bounds.height) {

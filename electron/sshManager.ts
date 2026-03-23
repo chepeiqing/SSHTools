@@ -33,6 +33,13 @@ export interface SystemStats {
   diskTotal: number
   diskPercent: number
   uptime: string
+  osInfo: string
+  hostname: string
+  loadAvg: string
+  networkIP: string
+  loginUsers: number
+  processCount: number
+  topProcesses: { pid: string; user: string; cpu: string; mem: string; command: string }[]
 }
 
 // SSH 连接管理器
@@ -1010,7 +1017,7 @@ class SSHManager {
     })
   }
 
-  // 获取系统监控信息
+  // 获取系统监控信息（单条命令采集所有数据）
   async getSystemStats(id: string): Promise<{ success: boolean; stats?: SystemStats; error?: string }> {
     const conn = this.connections.get(id)
     if (!conn) {
@@ -1018,34 +1025,82 @@ class SSHManager {
     }
 
     try {
-      // 先检测操作系统类型
-      const osCheckResult = await this.execCommand(id, "uname -s 2>/dev/null || echo Windows")
-      const osType = osCheckResult.output?.trim().toLowerCase() || 'linux'
-      const isDarwin = osType === 'darwin'
-
-      // 合并为单个脚本执行，减少 exec channel 开销（各段用 __SEP__ 分隔）
       const SEP = '__SEP__'
-      const cpuCmd = isDarwin
-        ? "top -l 1 | grep 'CPU usage' | awk '{print $3}' | tr -d '%'"
-        : "top -bn1 | grep 'Cpu(s)' | awk '{print $2+$4}'"
-      const memCmd = isDarwin
-        ? "mem_used=$(vm_stat | awk '/Pages active/ {a+=$3} /Pages wired/ {a+=$4} /Pages occupied by compressor/ {a+=$5} END {printf \"%d\", a*4096}') && mem_total=$(sysctl -n hw.memsize) && printf '%s %s' \"$mem_used\" \"$mem_total\""
-        : "free -b | awk '/Mem:/ {printf \"%d %d\", $3, $2}'"
-      const diskCmd = isDarwin
-        ? "df -b / | awk 'NR==2 {printf \"%d %d\", $3, $2}'"
-        : "df -B1 / | awk 'NR==2 {printf \"%d %d\", $3, $2}'"
-      const uptimeCmd = "uptime -p 2>/dev/null || uptime | sed 's/.*up/up/'"
+      // 一条命令采集全部信息，用分隔符分割各段
+      // 段顺序: os_type | cpu | mem | disk | uptime | os_info | hostname | load_avg | network_ip | login_users | process_count
+      const script = `
+_os=$(uname -s 2>/dev/null || echo Linux)
+echo "$_os"
+echo '${SEP}'
+if [ "$_os" = "Darwin" ]; then
+  top -l 1 | grep 'CPU usage' | awk '{print $3}' | tr -d '%'
+else
+  top -bn1 | grep 'Cpu(s)' | awk '{print $2+$4}'
+fi
+echo '${SEP}'
+if [ "$_os" = "Darwin" ]; then
+  _mu=$(vm_stat | awk '/Pages active/ {a+=$3} /Pages wired/ {a+=$4} /Pages occupied by compressor/ {a+=$5} END {printf "%d", a*4096}')
+  _mt=$(sysctl -n hw.memsize)
+  printf '%s %s' "$_mu" "$_mt"
+else
+  free -b | awk '/Mem:/ {printf "%d %d", $3, $2}'
+fi
+echo '${SEP}'
+if [ "$_os" = "Darwin" ]; then
+  df -b / | awk 'NR==2 {printf "%d %d", $3, $2}'
+else
+  df -B1 / | awk 'NR==2 {printf "%d %d", $3, $2}'
+fi
+echo '${SEP}'
+uptime -p 2>/dev/null || uptime | awk -F'up ' '{print $2}' | awk -F', *[0-9]+ user' '{print $1}'
+echo '${SEP}'
+if [ "$_os" = "Darwin" ]; then
+  printf '%s %s' "$(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null)" "$(uname -m)"
+else
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release; printf '%s %s' "$PRETTY_NAME" "$(uname -m)"
+  else
+    printf '%s %s' "$(uname -sr)" "$(uname -m)"
+  fi
+fi
+echo '${SEP}'
+hostname
+echo '${SEP}'
+uptime | awk -F'load average[s]?: ' '{print $2}' | head -1
+echo '${SEP}'
+if [ "$_os" = "Darwin" ]; then
+  ipconfig getifaddr en0 2>/dev/null || echo '-'
+else
+  hostname -I 2>/dev/null | awk '{print $1}' || ip -4 addr show scope global 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -1 || echo '-'
+fi
+echo '${SEP}'
+who 2>/dev/null | wc -l | tr -d ' '
+echo '${SEP}'
+if [ "$_os" = "Darwin" ]; then
+  ps aux 2>/dev/null | wc -l | tr -d ' '
+else
+  ls /proc 2>/dev/null | grep -c '^[0-9]' || ps aux 2>/dev/null | wc -l | tr -d ' '
+fi
+`.trim()
 
-      const combinedCmd = `(${cpuCmd}) && echo '${SEP}' && (${memCmd}) && echo '${SEP}' && (${diskCmd}) && echo '${SEP}' && (${uptimeCmd})`
-      const result = await this.execCommand(id, combinedCmd)
+      const result = await this.execCommand(id, script)
 
-      let cpuStr = '', memStr = '', diskStr = '', uptimeStr = ''
+      let osType = '', cpuStr = '', memStr = '', diskStr = '', uptimeStr = ''
+      let osInfo = '', hostname = '', loadAvg = '', networkIP = '', loginUsersStr = '', processCountStr = ''
+
       if (result.output) {
         const parts = result.output.split(SEP).map(s => s.trim())
-        cpuStr = parts[0] || ''
-        memStr = parts[1] || ''
-        diskStr = parts[2] || ''
-        uptimeStr = parts[3] || ''
+        osType = parts[0] || ''
+        cpuStr = parts[1] || ''
+        memStr = parts[2] || ''
+        diskStr = parts[3] || ''
+        uptimeStr = parts[4] || ''
+        osInfo = parts[5] || ''
+        hostname = parts[6] || ''
+        loadAvg = parts[7] || ''
+        networkIP = parts[8] || ''
+        loginUsersStr = parts[9] || ''
+        processCountStr = parts[10] || ''
       }
 
       const cpuUsage = parseFloat(cpuStr) || 0
@@ -1064,8 +1119,6 @@ class SSHManager {
         diskTotal = parseInt(diskParts[1]) || 1
       }
 
-      const uptime = uptimeStr || ''
-
       return {
         success: true,
         stats: {
@@ -1076,7 +1129,13 @@ class SSHManager {
           diskUsed,
           diskTotal,
           diskPercent: Math.round((diskUsed / diskTotal) * 100),
-          uptime,
+          uptime: uptimeStr || '',
+          osInfo: osInfo || '',
+          hostname: hostname || '',
+          loadAvg: loadAvg || '',
+          networkIP: networkIP && networkIP !== '-' ? networkIP : '',
+          loginUsers: parseInt(loginUsersStr) || 0,
+          processCount: parseInt(processCountStr) || 0,
         }
       }
     } catch (err: unknown) {

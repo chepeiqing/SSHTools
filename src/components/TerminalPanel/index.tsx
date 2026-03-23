@@ -290,15 +290,12 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     })
 
     // 显示欢迎信息
+    
+    term.writeln('')
     term.writeln('\x1b[1;34m========================================\x1b[0m')
     term.writeln('\x1b[1;34m       SSHTools Terminal\x1b[0m')
     term.writeln('\x1b[1;34m========================================\x1b[0m')
     term.writeln('')
-
-    if (!connectionId) {
-      term.writeln('\x1b[33m提示: 请在左侧会话管理器中双击服务器连接\x1b[0m')
-      term.writeln('')
-    }
 
     // 处理终端输入
     term.onData((data) => {

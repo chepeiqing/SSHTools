@@ -1281,8 +1281,6 @@ const MainContent: React.FC<MainContentProps> = ({
           <ConnectionDetailPanel
             connectionId={activeTab.connectionId}
             serverName={activeTab.serverName}
-            onDisconnect={() => disconnectTab(activeTab.key)}
-            onReconnect={() => reconnectTab(activeTab.key)}
           />
         )}
       </div>

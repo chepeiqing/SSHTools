@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Button, App } from 'antd'
+import { App } from 'antd'
 import {
-  DisconnectOutlined,
-  ReloadOutlined,
   CloudServerOutlined,
   CopyOutlined,
 } from '@ant-design/icons'
@@ -14,15 +12,11 @@ import './index.css'
 interface ConnectionDetailPanelProps {
   connectionId?: string
   serverName?: string
-  onDisconnect?: () => void
-  onReconnect?: () => void
 }
 
 const ConnectionDetailPanel: React.FC<ConnectionDetailPanelProps> = ({
   connectionId,
   serverName,
-  onDisconnect,
-  onReconnect,
 }) => {
   const { getConnection } = useConnectionStore()
   const { servers } = useServerStore()
@@ -83,7 +77,6 @@ const ConnectionDetailPanel: React.FC<ConnectionDetailPanelProps> = ({
   const host = server?.host || '—'
   const port = server?.port || 22
   const username = server?.username || '—'
-  const authType = server?.authType === 'privateKey' ? 'SSH 密钥' : '密码'
 
   const statusLabel = isConnected ? '在线' : isDisconnected ? '离线' : '连接中'
 
@@ -94,16 +87,41 @@ const ConnectionDetailPanel: React.FC<ConnectionDetailPanelProps> = ({
     return `${(bytes / 1024 / 1024 / 1024).toFixed(1)}GB`
   }
 
-  // 将 uptime 格式化为天数
+  // 将 uptime 转换为天数显示
   const formatUptimeDays = (raw: string): string => {
     if (!raw) return '—'
-    const dayMatch = raw.match(/(\d+)\s*days?/i)
-    if (dayMatch) return `${dayMatch[1]} 天`
-    const hourMatch = raw.match(/(\d+)\s*hours?/i)
-    if (hourMatch) return `${hourMatch[1]} 小时`
-    const minMatch = raw.match(/(\d+)\s*min/i)
-    if (minMatch) return `${minMatch[1]} 分钟`
-    return raw.replace(/^up\s+/i, '').trim()
+    let s = raw.replace(/^up\s+/i, '').trim()
+    s = s.replace(/,?\s*\d+\s*users?.*$/i, '').trim()
+    s = s.replace(/,?\s*load\s+averag.*$/i, '').trim()
+
+    let totalMinutes = 0
+
+    const weekMatch = s.match(/(\d+)\s*weeks?/i)
+    if (weekMatch) totalMinutes += parseInt(weekMatch[1]) * 7 * 24 * 60
+
+    const dayMatch = s.match(/(\d+)\s*days?/i)
+    if (dayMatch) totalMinutes += parseInt(dayMatch[1]) * 24 * 60
+
+    const hourMatch = s.match(/(\d+)\s*hours?/i)
+    const hmMatch = !hourMatch && s.match(/(\d+):(\d+)/)
+    if (hourMatch) {
+      totalMinutes += parseInt(hourMatch[1]) * 60
+    } else if (hmMatch) {
+      totalMinutes += parseInt(hmMatch[1]) * 60 + parseInt(hmMatch[2])
+    }
+
+    if (!hmMatch) {
+      const minMatch = s.match(/(\d+)\s*min/i)
+      if (minMatch) totalMinutes += parseInt(minMatch[1])
+    }
+
+    if (totalMinutes === 0) return s || '—'
+
+    const days = totalMinutes / (24 * 60)
+    if (days >= 1) return `${Math.floor(days)} 天`
+    const hours = totalMinutes / 60
+    if (hours >= 1) return `${Math.floor(hours)} 小时`
+    return `${totalMinutes} 分钟`
   }
 
   const handleCopy = (text: string) => {
@@ -127,30 +145,53 @@ const ConnectionDetailPanel: React.FC<ConnectionDetailPanelProps> = ({
         </div>
       </div>
 
-      {/* 连接详情 */}
+      {/* 服务器信息 */}
       <div className="section-block">
-        <div className="section-header">连接详情</div>
+        <div className="section-header">服务器信息</div>
+        {stats?.osInfo && (
+          <>
+            <div className="detail-item">
+              <span className="detail-label">操作系统</span>
+              <span className="detail-value">{stats.osInfo}</span>
+            </div>
+            <div className="detail-divider" />
+          </>
+        )}
+        {stats?.hostname && (
+          <>
+            <div className="detail-item">
+              <span className="detail-label">主机名</span>
+              <span className="detail-value">
+                {stats.hostname}
+                <CopyOutlined className="copy-icon" onClick={() => handleCopy(stats.hostname)} />
+              </span>
+            </div>
+            <div className="detail-divider" />
+          </>
+        )}
         <div className="detail-item">
-          <span className="detail-label">主机</span>
+          <span className="detail-label">地址</span>
           <span className="detail-value">
-            {host}
-            <CopyOutlined className="copy-icon" onClick={() => handleCopy(host)} />
+            {host}:{port}
+            <CopyOutlined className="copy-icon" onClick={() => handleCopy(`${host}:${port}`)} />
           </span>
         </div>
+        {stats?.networkIP && (
+          <>
+            <div className="detail-divider" />
+            <div className="detail-item">
+              <span className="detail-label">内网 IP</span>
+              <span className="detail-value">
+                {stats.networkIP}
+                <CopyOutlined className="copy-icon" onClick={() => handleCopy(stats.networkIP)} />
+              </span>
+            </div>
+          </>
+        )}
         <div className="detail-divider" />
         <div className="detail-item">
-          <span className="detail-label">端口</span>
-          <span className="detail-value">{port}</span>
-        </div>
-        <div className="detail-divider" />
-        <div className="detail-item">
-          <span className="detail-label">用户名</span>
+          <span className="detail-label">用户</span>
           <span className="detail-value">{username}</span>
-        </div>
-        <div className="detail-divider" />
-        <div className="detail-item">
-          <span className="detail-label">认证</span>
-          <span className="detail-value">{authType}</span>
         </div>
         {stats?.uptime && (
           <>
@@ -163,6 +204,29 @@ const ConnectionDetailPanel: React.FC<ConnectionDetailPanelProps> = ({
         )}
       </div>
 
+      {/* 运行状态 */}
+      {stats && (
+        <div className="section-block">
+          <div className="section-header">运行状态</div>
+          <div className="stats-grid">
+            {stats.loadAvg && (
+              <div className="stats-card">
+                <span className="stats-card-value">{stats.loadAvg}</span>
+                <span className="stats-card-label">负载均衡</span>
+              </div>
+            )}
+            <div className="stats-card">
+              <span className="stats-card-value">{stats.loginUsers}</span>
+              <span className="stats-card-label">登录用户</span>
+            </div>
+            <div className="stats-card">
+              <span className="stats-card-value">{stats.processCount}</span>
+              <span className="stats-card-label">进程数</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 资源监控 */}
       {stats && (
         <div className="section-block">
@@ -170,66 +234,34 @@ const ConnectionDetailPanel: React.FC<ConnectionDetailPanelProps> = ({
           <div className="monitor-list">
             <div className="monitor-item">
               <div className="monitor-label">
-                <span>CPU 负载</span>
+                <span>CPU</span>
                 <span>{stats.cpuUsage}%</span>
               </div>
               <div className="monitor-bar-bg">
-                <div className="monitor-bar-fill cyan" style={{ width: `${stats.cpuUsage}%` }} />
+                <div className={`monitor-bar-fill ${stats.cpuUsage > 80 ? 'rose' : stats.cpuUsage > 50 ? 'orange' : 'cyan'}`} style={{ width: `${stats.cpuUsage}%` }} />
               </div>
             </div>
             <div className="monitor-item">
               <div className="monitor-label">
-                <span>内存占用</span>
+                <span>内存</span>
                 <span>{formatBytes(stats.memUsed)} / {formatBytes(stats.memTotal)}</span>
               </div>
               <div className="monitor-bar-bg">
-                <div className="monitor-bar-fill orange" style={{ width: `${stats.memPercent}%` }} />
+                <div className={`monitor-bar-fill ${stats.memPercent > 80 ? 'rose' : stats.memPercent > 50 ? 'orange' : 'cyan'}`} style={{ width: `${stats.memPercent}%` }} />
               </div>
             </div>
             <div className="monitor-item">
               <div className="monitor-label">
-                <span>磁盘空间</span>
+                <span>磁盘</span>
                 <span>{formatBytes(stats.diskUsed)} / {formatBytes(stats.diskTotal)}</span>
               </div>
               <div className="monitor-bar-bg">
-                <div className="monitor-bar-fill rose" style={{ width: `${stats.diskPercent}%` }} />
+                <div className={`monitor-bar-fill ${stats.diskPercent > 80 ? 'rose' : stats.diskPercent > 50 ? 'orange' : 'cyan'}`} style={{ width: `${stats.diskPercent}%` }} />
               </div>
             </div>
           </div>
         </div>
       )}
-
-      {/* SSH 命令 */}
-      <div className="section-block">
-        <div className="section-header">SSH 命令行</div>
-        <div className="command-box">
-          <code>ssh {username}@{host}{port !== 22 ? ` -p ${port}` : ''}</code>
-        </div>
-      </div>
-
-      {/* 操作区域 */}
-      <div className="connection-actions">
-        {isConnected && (
-          <Button
-            type="text"
-            icon={<DisconnectOutlined />}
-            onClick={onDisconnect}
-            className="action-btn-ghost"
-          >
-            断开连接
-          </Button>
-        )}
-        {isDisconnected && (
-          <Button
-            type="primary"
-            icon={<ReloadOutlined />}
-            onClick={onReconnect}
-            className="action-btn-filled"
-          >
-            重新连接
-          </Button>
-        )}
-      </div>
     </div>
   )
 }
