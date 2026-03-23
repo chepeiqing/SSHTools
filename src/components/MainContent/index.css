@@ -92,6 +92,23 @@
   background: var(--primary-soft);
 }
 
+/* Tab drag reorder */
+.main-tabs .ant-tabs-tab[draggable="true"] {
+  cursor: grab;
+}
+
+.main-tabs .ant-tabs-tab[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.main-tabs .ant-tabs-tab.tab-drop-left {
+  box-shadow: inset 2px 0 0 0 var(--primary-color) !important;
+}
+
+.main-tabs .ant-tabs-tab.tab-drop-right {
+  box-shadow: inset -2px 0 0 0 var(--primary-color) !important;
+}
+
 /* Sidebar Toggle Button */
 .sidebar-toggle-btn {
   margin-right: 4px;

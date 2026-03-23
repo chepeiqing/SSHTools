@@ -153,6 +153,168 @@ const MainContent: React.FC<MainContentProps> = ({
     }))
   }, [connections, getConnection])
 
+  // === 标签拖拽排序 ===
+  const dragStateRef = useRef<{ dragKey: string | null }>({ dragKey: null })
+  const tabKeysStr = tabs.map(t => t.key).join(',')
+
+  useEffect(() => {
+    const navList = document.querySelector('.main-tabs .ant-tabs-nav-list')
+    const nav = document.querySelector('.main-tabs .ant-tabs-nav')
+    if (!navList || !nav) return
+
+    const getTabNodes = () => Array.from(navList.querySelectorAll<HTMLElement>('.ant-tabs-tab'))
+
+    const clearIndicators = () => {
+      navList.querySelectorAll('.tab-drop-left, .tab-drop-right').forEach(el => {
+        el.classList.remove('tab-drop-left', 'tab-drop-right')
+      })
+    }
+
+    // 根据鼠标 x 坐标找到最近的目标标签
+    const findDropTarget = (x: number): { node: HTMLElement; pos: 'left' | 'right' } | null => {
+      const nodes = getTabNodes()
+      let closest: HTMLElement | null = null
+      let minDist = Infinity
+      for (const node of nodes) {
+        const rect = node.getBoundingClientRect()
+        // 优先精确命中
+        if (x >= rect.left && x <= rect.right) {
+          const mid = rect.left + rect.width / 2
+          return { node, pos: x < mid ? 'left' : 'right' }
+        }
+        const center = rect.left + rect.width / 2
+        const dist = Math.abs(x - center)
+        if (dist < minDist) {
+          minDist = dist
+          closest = node
+        }
+      }
+      if (closest) {
+        const rect = closest.getBoundingClientRect()
+        const mid = rect.left + rect.width / 2
+        return { node: closest, pos: x < mid ? 'left' : 'right' }
+      }
+      return null
+    }
+
+    const onDragStart = (e: DragEvent) => {
+      const tab = e.currentTarget as HTMLElement
+      const key = tab.getAttribute('data-node-key')
+      if (!key) return
+      // 从关闭按钮区域发起的拖拽不处理
+      if ((e.target as HTMLElement).closest('.ant-tabs-tab-remove')) {
+        e.preventDefault()
+        return
+      }
+      dragStateRef.current.dragKey = key
+      e.dataTransfer!.effectAllowed = 'move'
+      e.dataTransfer!.setData('text/plain', '')
+    }
+
+    const onNavDragOver = (e: Event) => {
+      const de = e as DragEvent
+      de.preventDefault()
+      const { dragKey } = dragStateRef.current
+      if (!dragKey) return
+
+      const target = findDropTarget(de.clientX)
+      if (!target) { clearIndicators(); return }
+
+      const key = target.node.getAttribute('data-node-key')
+      if (!key || dragKey === key) { clearIndicators(); return }
+      if (key === HOME_TAB_KEY && target.pos === 'left') { clearIndicators(); return }
+
+      clearIndicators()
+      target.node.classList.add(`tab-drop-${target.pos}`)
+    }
+
+    const onNavDrop = (e: Event) => {
+      const de = e as DragEvent
+      de.preventDefault()
+      const { dragKey } = dragStateRef.current
+      if (!dragKey) { clearIndicators(); return }
+
+      // 从当前显示的指示器上获取目标
+      const dropNode = navList.querySelector<HTMLElement>('.tab-drop-left, .tab-drop-right')
+      if (!dropNode) {
+        // 兜底：通过坐标查找
+        const target = findDropTarget(de.clientX)
+        if (!target) { clearIndicators(); dragStateRef.current.dragKey = null; return }
+        const key = target.node.getAttribute('data-node-key')
+        if (!key || dragKey === key) { clearIndicators(); dragStateRef.current.dragKey = null; return }
+      }
+
+      const targetNode = dropNode || findDropTarget(de.clientX)?.node
+      const dropKey = targetNode?.getAttribute('data-node-key')
+      if (!dropKey || dragKey === dropKey) {
+        clearIndicators()
+        dragStateRef.current.dragKey = null
+        return
+      }
+
+      const pos = targetNode!.classList.contains('tab-drop-right') ? 'right' : 'left'
+
+      setTabs(prev => {
+        const dragIdx = prev.findIndex(t => t.key === dragKey)
+        const dropIdx = prev.findIndex(t => t.key === dropKey)
+        if (dragIdx < 0 || dropIdx < 0) return prev
+        const newTabs = [...prev]
+        const [dragged] = newTabs.splice(dragIdx, 1)
+        const newDropIdx = newTabs.findIndex(t => t.key === dropKey)
+        const insertIdx = pos === 'right' ? newDropIdx + 1 : newDropIdx
+        newTabs.splice(insertIdx, 0, dragged)
+        return newTabs
+      })
+
+      clearIndicators()
+      dragStateRef.current.dragKey = null
+    }
+
+    const onDragEnd = () => {
+      clearIndicators()
+      dragStateRef.current.dragKey = null
+    }
+
+    const onNavDragLeave = (e: Event) => {
+      const de = e as DragEvent
+      const navEl = de.currentTarget as HTMLElement
+      const related = de.relatedTarget as HTMLElement | null
+      // 仅当鼠标真正离开导航区域时才清除指示器
+      if (!related || !navEl.contains(related)) {
+        clearIndicators()
+      }
+    }
+
+    // dragstart / dragend 绑定在各个可拖拽标签上
+    const tabNodes = getTabNodes()
+    tabNodes.forEach(node => {
+      const key = node.getAttribute('data-node-key')
+      if (key && key !== HOME_TAB_KEY) {
+        node.setAttribute('draggable', 'true')
+        node.addEventListener('dragstart', onDragStart)
+        node.addEventListener('dragend', onDragEnd)
+      }
+    })
+
+    // dragover / drop / dragleave 绑定在整个导航区域，扩大可放置范围
+    nav.addEventListener('dragover', onNavDragOver)
+    nav.addEventListener('drop', onNavDrop)
+    nav.addEventListener('dragleave', onNavDragLeave)
+
+    return () => {
+      tabNodes.forEach(node => {
+        node.removeAttribute('draggable')
+        node.removeEventListener('dragstart', onDragStart)
+        node.removeEventListener('dragend', onDragEnd)
+      })
+      nav.removeEventListener('dragover', onNavDragOver)
+      nav.removeEventListener('drop', onNavDrop)
+      nav.removeEventListener('dragleave', onNavDragLeave)
+      clearIndicators()
+      dragStateRef.current.dragKey = null
+    }
+  }, [tabKeysStr])
+
   // 连接服务器并创建标签
   const connectAndCreateTab = async (serverId: string) => {
     const server = servers.find(s => s.id === serverId)
