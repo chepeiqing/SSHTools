@@ -194,4 +194,38 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('backup-servers', data),
   restoreServers: () =>
     ipcRenderer.invoke('restore-servers'),
+
+  // ==================== 跨窗口标签迁移 ====================
+
+  // 拖拽悬停置顶（拖拽期间自动将光标下方窗口置顶）
+  tabDragHoverStart: (tabName: string) => ipcRenderer.invoke('tab-drag-hover-start', tabName),
+  tabDragHoverEnd: () => ipcRenderer.invoke('tab-drag-hover-end'),
+
+  // 标签拖出窗口
+  tabTearOut: (data: { tabData: Record<string, unknown>; screenX: number; screenY: number }) =>
+    ipcRenderer.invoke('tab-tear-out', data),
+
+  // 获取新窗口的初始标签数据
+  getInitTabs: () =>
+    ipcRenderer.invoke('get-init-tabs'),
+
+  // 监听标签从其他窗口转入
+  onTabReceived: (callback: (tabData: Record<string, unknown>) => void) => {
+    const handler = (_event: any, tabData: Record<string, unknown>) => callback(tabData)
+    ipcRenderer.on('tab-received', handler)
+    return () => ipcRenderer.removeListener('tab-received', handler)
+  },
+
+  // 监听跨窗口拖拽指示器（主进程轮询时通知目标窗口显示插入位置）
+  onTabDragOver: (callback: (screenX: number) => void) => {
+    const handler = (_event: any, screenX: number) => callback(screenX)
+    ipcRenderer.on('tab-drag-over', handler)
+    return () => ipcRenderer.removeListener('tab-drag-over', handler)
+  },
+
+  onTabDragLeave: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('tab-drag-leave', handler)
+    return () => ipcRenderer.removeListener('tab-drag-leave', handler)
+  },
 })

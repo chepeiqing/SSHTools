@@ -424,6 +424,15 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         if (!result.success) {
           terminalInstance.current?.writeln(`\x1b[31m启动 Shell 失败: ${result.error}\x1b[0m`)
         } else {
+          // 如果是复用已有 shell（跨窗口迁移），回放缓冲区内容
+          if (result.reused && terminalInstance.current) {
+            // 清除初始化时写入的欢迎信息
+            terminalInstance.current.reset()
+            // 回放缓冲的终端输出
+            if (result.buffer) {
+              terminalInstance.current.write(result.buffer)
+            }
+          }
           if (fitAddonRef.current) {
             const dims = fitAddonRef.current.proposeDimensions()
             if (dims) {

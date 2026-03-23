@@ -30,6 +30,17 @@ import { useServerStore } from '../../stores/serverStore'
 import { onSessionConnect } from '../SessionManager'
 import './index.css'
 
+// 序列化标签数据（用于跨窗口传输）
+interface SerializedTab {
+  key: string
+  label: string
+  type: 'home' | 'terminal' | 'editor'
+  serverId?: string
+  serverName?: string
+  connectionId?: string
+  status?: string
+}
+
 interface TabItem {
   key: string
   label: string
@@ -153,8 +164,213 @@ const MainContent: React.FC<MainContentProps> = ({
     }))
   }, [connections, getConnection])
 
-  // === 标签拖拽排序 ===
-  const dragStateRef = useRef<{ dragKey: string | null }>({ dragKey: null })
+  // === 标签拖出窗口（跨窗口迁移） ===
+  const tearOffTab = useCallback(async (tabKey: string, screenX: number, screenY: number) => {
+    const tab = tabs.find(t => t.key === tabKey)
+    if (!tab || tab.type === 'home') return
+
+    const tabData: SerializedTab = {
+      key: tab.key,
+      label: tab.label,
+      type: tab.type,
+      serverId: tab.serverId,
+      serverName: tab.serverName,
+      connectionId: tab.connectionId,
+      status: tab.status,
+    }
+
+    // 先询问主进程（主进程用真实光标位置判断），再决定是否移除标签
+    const result = await window.electronAPI.tabTearOut({ tabData: { ...tabData }, screenX, screenY })
+    if (result.action === 'none') return
+
+    // 从当前窗口移除标签（不断开 SSH 连接）
+    setTabs(prev => {
+      const remaining = prev.filter(t => t.key !== tabKey)
+      return remaining
+    })
+    if (activeKey === tabKey) {
+      const remaining = tabs.filter(t => t.key !== tabKey)
+      setActiveKey(remaining.length > 0 ? remaining[remaining.length - 1].key : HOME_TAB_KEY)
+    }
+
+    // 清理源窗口的连接状态（如果没有其他标签在用同一个连接）
+    if (tab.connectionId) {
+      const otherTabUsing = tabs.some(t => t.key !== tabKey && t.connectionId === tab.connectionId)
+      if (!otherTabUsing) {
+        useConnectionStore.getState().removeConnection(tab.connectionId)
+      }
+    }
+  }, [tabs, activeKey])
+
+  const tearOffTabRef = useRef(tearOffTab)
+  useEffect(() => { tearOffTabRef.current = tearOffTab })
+
+  // === 接收来自其他窗口的标签 ===
+  useEffect(() => {
+    const receiveTab = (tabData: Record<string, unknown>) => {
+      const newTab: TabItem = {
+        key: tabData.key as string,
+        label: tabData.label as string,
+        type: tabData.type as 'terminal' | 'editor',
+        serverId: tabData.serverId as string | undefined,
+        serverName: tabData.serverName as string | undefined,
+        connectionId: tabData.connectionId as string | undefined,
+        status: (tabData.status as TabItem['status']) || 'connected',
+        sftpVisible: false,
+        sftpHeight: 0,
+        sftpNavSeq: 0,
+        detailPanelVisible: true,
+      }
+
+      // 在 connectionStore 中注册连接状态（新窗口的 store 中没有）
+      if (newTab.connectionId && newTab.serverId) {
+        const { setConnection, getConnection } = useConnectionStore.getState()
+        if (!getConnection(newTab.connectionId)) {
+          setConnection(newTab.connectionId, {
+            id: newTab.connectionId,
+            serverId: newTab.serverId,
+            serverName: newTab.serverName || '',
+            status: 'connected',
+            sftpReady: false,
+          })
+        }
+      }
+
+      // 根据光标屏幕坐标计算插入位置
+      const screenX = tabData._screenX as number | undefined
+      if (screenX !== undefined) {
+        const navList = document.querySelector('.main-tabs .ant-tabs-nav-list')
+        if (navList) {
+          const tabNodes = Array.from(navList.querySelectorAll<HTMLElement>('.ant-tabs-tab'))
+          // screenX → 相对于标签栏的 clientX
+          const clientX = screenX - window.screenX
+          let insertKey: string | null = null
+          let insertPos: 'before' | 'after' = 'after'
+          for (const node of tabNodes) {
+            const rect = node.getBoundingClientRect()
+            const mid = rect.left + rect.width / 2
+            if (clientX < mid) {
+              const key = node.getAttribute('data-node-key')
+              if (key && key !== HOME_TAB_KEY) {
+                insertKey = key
+                insertPos = 'before'
+              }
+              break
+            }
+          }
+          setTabs(prev => {
+            if (insertKey) {
+              const idx = prev.findIndex(t => t.key === insertKey)
+              if (idx >= 0) {
+                const newTabs = [...prev]
+                newTabs.splice(insertPos === 'before' ? idx : idx + 1, 0, newTab)
+                return newTabs
+              }
+            }
+            return [...prev, newTab]
+          })
+          setActiveKey(newTab.key)
+          return
+        }
+      }
+
+      setTabs(prev => [...prev, newTab])
+      setActiveKey(newTab.key)
+    }
+
+    const cleanup = window.electronAPI.onTabReceived(receiveTab)
+    return cleanup
+  }, [])
+
+  // === 跨窗口拖拽指示器（目标窗口侧） ===
+  useEffect(() => {
+    const handleDragOver = (screenX: number) => {
+      const navList = document.querySelector('.main-tabs .ant-tabs-nav-list')
+      if (!navList) return
+      // 清除旧指示器
+      navList.querySelectorAll('.tab-drop-left, .tab-drop-right').forEach(el => {
+        el.classList.remove('tab-drop-left', 'tab-drop-right')
+      })
+      // screenX → clientX
+      const clientX = screenX - window.screenX
+      const tabNodes = Array.from(navList.querySelectorAll<HTMLElement>('.ant-tabs-tab'))
+      for (const node of tabNodes) {
+        const key = node.getAttribute('data-node-key')
+        if (key === HOME_TAB_KEY) continue
+        const rect = node.getBoundingClientRect()
+        if (clientX >= rect.left && clientX <= rect.right) {
+          const mid = rect.left + rect.width / 2
+          node.classList.add(clientX < mid ? 'tab-drop-left' : 'tab-drop-right')
+          return
+        }
+      }
+      // 光标在最后一个标签之后
+      const lastTab = tabNodes[tabNodes.length - 1]
+      if (lastTab) {
+        const rect = lastTab.getBoundingClientRect()
+        if (clientX > rect.right) {
+          lastTab.classList.add('tab-drop-right')
+        }
+      }
+    }
+
+    const handleDragLeave = () => {
+      const navList = document.querySelector('.main-tabs .ant-tabs-nav-list')
+      if (!navList) return
+      navList.querySelectorAll('.tab-drop-left, .tab-drop-right').forEach(el => {
+        el.classList.remove('tab-drop-left', 'tab-drop-right')
+      })
+    }
+
+    const cleanupOver = window.electronAPI.onTabDragOver(handleDragOver)
+    const cleanupLeave = window.electronAPI.onTabDragLeave(handleDragLeave)
+    return () => { cleanupOver(); cleanupLeave() }
+  }, [])
+
+  // === 新窗口加载初始标签 ===
+  useEffect(() => {
+    window.electronAPI.getInitTabs().then((tabData) => {
+      if (!tabData) return
+
+      const newTab: TabItem = {
+        key: tabData.key as string,
+        label: tabData.label as string,
+        type: tabData.type as 'terminal' | 'editor',
+        serverId: tabData.serverId as string | undefined,
+        serverName: tabData.serverName as string | undefined,
+        connectionId: tabData.connectionId as string | undefined,
+        status: (tabData.status as TabItem['status']) || 'connected',
+        sftpVisible: false,
+        sftpHeight: 0,
+        sftpNavSeq: 0,
+        detailPanelVisible: true,
+      }
+
+      // 在 connectionStore 中注册连接状态
+      if (newTab.connectionId && newTab.serverId) {
+        useConnectionStore.getState().setConnection(newTab.connectionId, {
+          id: newTab.connectionId,
+          serverId: newTab.serverId,
+          serverName: newTab.serverName || '',
+          status: 'connected',
+          sftpReady: false,
+        })
+      }
+
+      setTabs(prev => [...prev, newTab])
+      setActiveKey(newTab.key)
+    })
+  }, [])
+
+  // === 标签拖拽排序（基于 pointer 事件，支持自定义光标和窗口外捕获） ===
+  const dragStateRef = useRef<{
+    dragKey: string | null
+    startX: number
+    startY: number
+    isDragging: boolean
+    captureTarget: HTMLElement | null
+    pointerId: number
+  }>({ dragKey: null, startX: 0, startY: 0, isDragging: false, captureTarget: null, pointerId: -1 })
   const tabKeysStr = tabs.map(t => t.key).join(',')
 
   useEffect(() => {
@@ -163,6 +379,7 @@ const MainContent: React.FC<MainContentProps> = ({
     if (!navList || !nav) return
 
     const getTabNodes = () => Array.from(navList.querySelectorAll<HTMLElement>('.ant-tabs-tab'))
+    const DRAG_THRESHOLD = 5
 
     const clearIndicators = () => {
       navList.querySelectorAll('.tab-drop-left, .tab-drop-right').forEach(el => {
@@ -170,14 +387,12 @@ const MainContent: React.FC<MainContentProps> = ({
       })
     }
 
-    // 根据鼠标 x 坐标找到最近的目标标签
     const findDropTarget = (x: number): { node: HTMLElement; pos: 'left' | 'right' } | null => {
       const nodes = getTabNodes()
       let closest: HTMLElement | null = null
       let minDist = Infinity
       for (const node of nodes) {
         const rect = node.getBoundingClientRect()
-        // 优先精确命中
         if (x >= rect.left && x <= rect.right) {
           const mid = rect.left + rect.width / 2
           return { node, pos: x < mid ? 'left' : 'right' }
@@ -197,120 +412,165 @@ const MainContent: React.FC<MainContentProps> = ({
       return null
     }
 
-    const onDragStart = (e: DragEvent) => {
-      const tab = e.currentTarget as HTMLElement
+    const cleanup = () => {
+      const state = dragStateRef.current
+      clearIndicators()
+      document.body.classList.remove('tab-dragging-active')
+      document.querySelector('.tab-tearoff-hint')?.remove()
+      if (state.captureTarget && state.pointerId >= 0) {
+        try { state.captureTarget.releasePointerCapture(state.pointerId) } catch { /* already released */ }
+      }
+      state.isDragging = false
+      state.dragKey = null
+      state.captureTarget = null
+      state.pointerId = -1
+    }
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return
+      const tab = (e.currentTarget as HTMLElement).closest('.ant-tabs-tab') as HTMLElement | null
+      if (!tab) return
       const key = tab.getAttribute('data-node-key')
-      if (!key) return
-      // 从关闭按钮区域发起的拖拽不处理
-      if ((e.target as HTMLElement).closest('.ant-tabs-tab-remove')) {
-        e.preventDefault()
-        return
-      }
+      if (!key || key === HOME_TAB_KEY) return
+      if ((e.target as HTMLElement).closest('.ant-tabs-tab-remove')) return
+
+      // 设置 pointer capture，确保窗口外也能收到 pointermove/pointerup
+      tab.setPointerCapture(e.pointerId)
+
       dragStateRef.current.dragKey = key
-      e.dataTransfer!.effectAllowed = 'move'
-      e.dataTransfer!.setData('text/plain', '')
+      dragStateRef.current.startX = e.clientX
+      dragStateRef.current.startY = e.clientY
+      dragStateRef.current.isDragging = false
+      dragStateRef.current.captureTarget = tab
+      dragStateRef.current.pointerId = e.pointerId
     }
 
-    const onNavDragOver = (e: Event) => {
-      const de = e as DragEvent
-      de.preventDefault()
-      const { dragKey } = dragStateRef.current
-      if (!dragKey) return
+    const startDrag = (e: PointerEvent) => {
+      const state = dragStateRef.current
+      state.isDragging = true
+      document.body.classList.add('tab-dragging-active')
 
-      const target = findDropTarget(de.clientX)
-      if (!target) { clearIndicators(); return }
+      const tabNode = navList.querySelector<HTMLElement>(`.ant-tabs-tab[data-node-key="${state.dragKey}"]`)
+      const tabName = tabNode?.querySelector('.tab-name')?.textContent || ''
 
-      const key = target.node.getAttribute('data-node-key')
-      if (!key || dragKey === key) { clearIndicators(); return }
-      if (key === HOME_TAB_KEY && target.pos === 'left') { clearIndicators(); return }
-
-      clearIndicators()
-      target.node.classList.add(`tab-drop-${target.pos}`)
+      // 通知主进程开始拖拽（主进程创建跨窗口统一的悬浮标签）
+      window.electronAPI.tabDragHoverStart(tabName)
     }
 
-    const onNavDrop = (e: Event) => {
-      const de = e as DragEvent
-      de.preventDefault()
-      const { dragKey } = dragStateRef.current
-      if (!dragKey) { clearIndicators(); return }
+    const onPointerMove = (e: PointerEvent) => {
+      const state = dragStateRef.current
+      if (!state.dragKey) return
 
-      // 从当前显示的指示器上获取目标
-      const dropNode = navList.querySelector<HTMLElement>('.tab-drop-left, .tab-drop-right')
-      if (!dropNode) {
-        // 兜底：通过坐标查找
-        const target = findDropTarget(de.clientX)
-        if (!target) { clearIndicators(); dragStateRef.current.dragKey = null; return }
-        const key = target.node.getAttribute('data-node-key')
-        if (!key || dragKey === key) { clearIndicators(); dragStateRef.current.dragKey = null; return }
+      if (!state.isDragging) {
+        const dx = e.clientX - state.startX
+        const dy = e.clientY - state.startY
+        if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return
+        startDrag(e)
       }
 
-      const targetNode = dropNode || findDropTarget(de.clientX)?.node
-      const dropKey = targetNode?.getAttribute('data-node-key')
-      if (!dropKey || dragKey === dropKey) {
+      const isInWindow = e.clientX > 0 && e.clientY > 0 &&
+        e.clientX < window.innerWidth && e.clientY < window.innerHeight
+
+      const navRect = nav.getBoundingClientRect()
+      const isOverNav = e.clientX >= navRect.left && e.clientX <= navRect.right &&
+        e.clientY >= navRect.top && e.clientY <= navRect.bottom
+
+      if (isOverNav) {
+        const target = findDropTarget(e.clientX)
+        if (target) {
+          const key = target.node.getAttribute('data-node-key')
+          if (key && key !== state.dragKey && !(key === HOME_TAB_KEY && target.pos === 'left')) {
+            clearIndicators()
+            target.node.classList.add(`tab-drop-${target.pos}`)
+          } else {
+            clearIndicators()
+          }
+        } else {
+          clearIndicators()
+        }
+      } else {
         clearIndicators()
-        dragStateRef.current.dragKey = null
+      }
+
+      const hint = document.querySelector('.tab-tearoff-hint')
+      if (!isInWindow) {
+        if (!hint) {
+          const newHint = document.createElement('div')
+          newHint.className = 'tab-tearoff-hint'
+          newHint.textContent = '松开以在新窗口中打开'
+          document.body.appendChild(newHint)
+          requestAnimationFrame(() => newHint.classList.add('visible'))
+        }
+      } else if (hint) {
+        hint.classList.remove('visible')
+      }
+    }
+
+    const onPointerUp = (e: PointerEvent) => {
+      const state = dragStateRef.current
+      if (!state.dragKey) return
+
+      const dragKey = state.dragKey
+
+      if (!state.isDragging) {
+        state.dragKey = null
+        if (state.captureTarget && state.pointerId >= 0) {
+          try { state.captureTarget.releasePointerCapture(state.pointerId) } catch { /* */ }
+        }
+        state.captureTarget = null
+        state.pointerId = -1
         return
       }
 
-      const pos = targetNode!.classList.contains('tab-drop-right') ? 'right' : 'left'
+      window.electronAPI.tabDragHoverEnd()
 
-      setTabs(prev => {
-        const dragIdx = prev.findIndex(t => t.key === dragKey)
-        const dropIdx = prev.findIndex(t => t.key === dropKey)
-        if (dragIdx < 0 || dropIdx < 0) return prev
-        const newTabs = [...prev]
-        const [dragged] = newTabs.splice(dragIdx, 1)
-        const newDropIdx = newTabs.findIndex(t => t.key === dropKey)
-        const insertIdx = pos === 'right' ? newDropIdx + 1 : newDropIdx
-        newTabs.splice(insertIdx, 0, dragged)
-        return newTabs
-      })
+      // 用拖放指示器判断是否为同窗口排序（而非坐标判断，避免重叠区域误判）
+      const dropNode = navList.querySelector<HTMLElement>('.tab-drop-left, .tab-drop-right')
 
-      clearIndicators()
-      dragStateRef.current.dragKey = null
-    }
-
-    const onDragEnd = () => {
-      clearIndicators()
-      dragStateRef.current.dragKey = null
-    }
-
-    const onNavDragLeave = (e: Event) => {
-      const de = e as DragEvent
-      const navEl = de.currentTarget as HTMLElement
-      const related = de.relatedTarget as HTMLElement | null
-      // 仅当鼠标真正离开导航区域时才清除指示器
-      if (!related || !navEl.contains(related)) {
-        clearIndicators()
+      if (dropNode) {
+        // 有指示器 → 同窗口排序
+        const dropKey = dropNode.getAttribute('data-node-key')
+        if (dropKey && dropKey !== dragKey) {
+          const pos = dropNode.classList.contains('tab-drop-right') ? 'right' : 'left'
+          setTabs(prev => {
+            const dragIdx = prev.findIndex(t => t.key === dragKey)
+            const dropIdx = prev.findIndex(t => t.key === dropKey)
+            if (dragIdx < 0 || dropIdx < 0) return prev
+            const newTabs = [...prev]
+            const [dragged] = newTabs.splice(dragIdx, 1)
+            const newDropIdx = newTabs.findIndex(t => t.key === dropKey)
+            const insertIdx = pos === 'right' ? newDropIdx + 1 : newDropIdx
+            newTabs.splice(insertIdx, 0, dragged)
+            return newTabs
+          })
+        }
+      } else if (dragKey !== HOME_TAB_KEY && tearOffTabRef.current) {
+        // 无指示器 → 交由主进程判断（跨窗口迁移或取消）
+        tearOffTabRef.current(dragKey, e.screenX, e.screenY)
       }
+
+      cleanup()
     }
 
-    // dragstart / dragend 绑定在各个可拖拽标签上
+    // pointerdown 绑定在各个标签上（pointer capture 确保窗口外也能收到事件）
     const tabNodes = getTabNodes()
     tabNodes.forEach(node => {
       const key = node.getAttribute('data-node-key')
       if (key && key !== HOME_TAB_KEY) {
-        node.setAttribute('draggable', 'true')
-        node.addEventListener('dragstart', onDragStart)
-        node.addEventListener('dragend', onDragEnd)
+        node.addEventListener('pointerdown', onPointerDown)
       }
     })
-
-    // dragover / drop / dragleave 绑定在整个导航区域，扩大可放置范围
-    nav.addEventListener('dragover', onNavDragOver)
-    nav.addEventListener('drop', onNavDrop)
-    nav.addEventListener('dragleave', onNavDragLeave)
+    // pointermove / pointerup 绑定在 document 上（通过 pointer capture 冒泡）
+    document.addEventListener('pointermove', onPointerMove)
+    document.addEventListener('pointerup', onPointerUp)
 
     return () => {
       tabNodes.forEach(node => {
-        node.removeAttribute('draggable')
-        node.removeEventListener('dragstart', onDragStart)
-        node.removeEventListener('dragend', onDragEnd)
+        node.removeEventListener('pointerdown', onPointerDown)
       })
-      nav.removeEventListener('dragover', onNavDragOver)
-      nav.removeEventListener('drop', onNavDrop)
-      nav.removeEventListener('dragleave', onNavDragLeave)
-      clearIndicators()
+      document.removeEventListener('pointermove', onPointerMove)
+      document.removeEventListener('pointerup', onPointerUp)
+      cleanup()
       dragStateRef.current.dragKey = null
     }
   }, [tabKeysStr])

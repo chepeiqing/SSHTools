@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, shell, dialog, IpcMainInvokeEvent, safeStorage } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, shell, dialog, screen, IpcMainInvokeEvent, safeStorage } from 'electron'
 import path from 'path'
 import Store from 'electron-store'
 import { sshManager, SSHConnectionConfig } from './sshManager'
@@ -8,10 +8,12 @@ const store = new Store()
 const credentialStore = new Store({ name: 'credentials' })
 const backupStore = new Store({ name: 'server-backup' })
 
-// 主窗口引用
-let mainWindow: BrowserWindow | null = null
+// 窗口池（多窗口管理）
+const windows = new Set<BrowserWindow>()
+// 新窗口初始标签数据
+const pendingTabData = new Map<number, Record<string, unknown>>()
 
-function createWindow() {
+function createWindow(): BrowserWindow {
   const isMac = process.platform === 'darwin'
   const isDev = process.env.NODE_ENV === 'development'
 
@@ -20,7 +22,7 @@ function createWindow() {
     ? path.join(__dirname, '../build/icon.png')
     : path.join(process.resourcesPath, 'icon.png')
 
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
@@ -40,23 +42,32 @@ function createWindow() {
   })
 
   // 窗口准备好后显示
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show()
+  win.once('ready-to-show', () => {
+    win.show()
   })
 
-  // 设置 SSH 管理器的主窗口引用
-  sshManager.setMainWindow(mainWindow)
+  // 注册到窗口池和 SSH 管理器
+  windows.add(win)
+  sshManager.registerWindow(win.webContents)
+
+  // 兼容旧的 setMainWindow 调用（首个窗口）
+  if (windows.size === 1) {
+    sshManager.setMainWindow(win)
+  }
 
   // 开发环境加载本地服务器
   if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173')
-    mainWindow.webContents.openDevTools()
+    win.loadURL('http://localhost:5173')
+    // 仅首个窗口自动开启 DevTools
+    if (windows.size === 1) {
+      win.webContents.openDevTools()
+    }
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+    win.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
   // 外部链接用默认浏览器打开
-  mainWindow.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
+  win.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
     if (url.startsWith('http')) {
       shell.openExternal(url)
     }
@@ -64,12 +75,22 @@ function createWindow() {
   })
 
   // 发送窗口最大化/还原事件到渲染进程
-  mainWindow.on('maximize', () => {
-    mainWindow?.webContents.send('window-maximized')
+  win.on('maximize', () => {
+    win.webContents.send('window-maximized')
   })
-  mainWindow.on('unmaximize', () => {
-    mainWindow?.webContents.send('window-unmaximized')
+  win.on('unmaximize', () => {
+    win.webContents.send('window-unmaximized')
   })
+
+  // 窗口关闭时清理（提前捕获 webContents 引用，closed 事件时已销毁）
+  const wc = win.webContents
+  win.on('closed', () => {
+    sshManager.unregisterWindow(wc)
+    windows.delete(win)
+    pendingTabData.delete(win.id)
+  })
+
+  return win
 }
 
 // 获取初始主题设置
@@ -102,24 +123,25 @@ ipcMain.handle('get-system-theme', () => {
 })
 
 // 窗口控制
-ipcMain.handle('window-minimize', () => {
-  mainWindow?.minimize()
+ipcMain.handle('window-minimize', (event: IpcMainInvokeEvent) => {
+  BrowserWindow.fromWebContents(event.sender)?.minimize()
 })
 
-ipcMain.handle('window-maximize', () => {
-  if (mainWindow?.isMaximized()) {
-    mainWindow.unmaximize()
+ipcMain.handle('window-maximize', (event: IpcMainInvokeEvent) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win?.isMaximized()) {
+    win.unmaximize()
   } else {
-    mainWindow?.maximize()
+    win?.maximize()
   }
 })
 
-ipcMain.handle('window-close', () => {
-  mainWindow?.close()
+ipcMain.handle('window-close', (event: IpcMainInvokeEvent) => {
+  BrowserWindow.fromWebContents(event.sender)?.close()
 })
 
-ipcMain.handle('window-is-maximized', () => {
-  return mainWindow?.isMaximized()
+ipcMain.handle('window-is-maximized', (event: IpcMainInvokeEvent) => {
+  return BrowserWindow.fromWebContents(event.sender)?.isMaximized()
 })
 
 // 获取平台信息
@@ -138,16 +160,21 @@ ipcMain.handle('open-external', (_event: IpcMainInvokeEvent, url: string) => {
   }
 })
 
-// 监听系统主题变化
+// 监听系统主题变化（广播到所有窗口）
 nativeTheme.on('updated', () => {
-  mainWindow?.webContents.send('system-theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+  const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+  for (const win of windows) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('system-theme-changed', theme)
+    }
+  }
 })
 
 // ==================== SSH 相关 IPC 处理 ====================
 
 // SSH 连接
-ipcMain.handle('ssh-connect', async (_event: IpcMainInvokeEvent, config: SSHConnectionConfig) => {
-  return await sshManager.connect(config)
+ipcMain.handle('ssh-connect', async (event: IpcMainInvokeEvent, config: SSHConnectionConfig) => {
+  return await sshManager.connect(config, event.sender)
 })
 
 // SSH 断开连接
@@ -202,30 +229,36 @@ ipcMain.handle('sftp-rename', async (_event: IpcMainInvokeEvent, id: string, old
 })
 
 // 下载文件
-ipcMain.handle('sftp-download', async (_event: IpcMainInvokeEvent, id: string, remotePath: string, localPath: string, resume?: boolean) => {
+ipcMain.handle('sftp-download', async (event: IpcMainInvokeEvent, id: string, remotePath: string, localPath: string, resume?: boolean) => {
+  const sender = event.sender
   return await sshManager.downloadFile(id, remotePath, localPath, (transferred, total) => {
-    mainWindow?.webContents.send('sftp-transfer-progress', {
-      id,
-      type: 'download',
-      remotePath,
-      localPath,
-      transferred,
-      total,
-    })
+    if (!sender.isDestroyed()) {
+      sender.send('sftp-transfer-progress', {
+        id,
+        type: 'download',
+        remotePath,
+        localPath,
+        transferred,
+        total,
+      })
+    }
   }, resume)
 })
 
 // 上传文件
-ipcMain.handle('sftp-upload', async (_event: IpcMainInvokeEvent, id: string, localPath: string, remotePath: string, resume?: boolean) => {
+ipcMain.handle('sftp-upload', async (event: IpcMainInvokeEvent, id: string, localPath: string, remotePath: string, resume?: boolean) => {
+  const sender = event.sender
   return await sshManager.uploadFile(id, localPath, remotePath, (transferred, total) => {
-    mainWindow?.webContents.send('sftp-transfer-progress', {
-      id,
-      type: 'upload',
-      localPath,
-      remotePath,
-      transferred,
-      total,
-    })
+    if (!sender.isDestroyed()) {
+      sender.send('sftp-transfer-progress', {
+        id,
+        type: 'upload',
+        localPath,
+        remotePath,
+        transferred,
+        total,
+      })
+    }
   }, resume)
 })
 
@@ -305,11 +338,12 @@ ipcMain.handle('read-file', async (_event: IpcMainInvokeEvent, filePath: string)
 })
 
 // 选择本地文件
-ipcMain.handle('dialog-open-file', async () => {
-  if (!mainWindow || mainWindow.isDestroyed()) {
+ipcMain.handle('dialog-open-file', async (event: IpcMainInvokeEvent) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || win.isDestroyed()) {
     return { canceled: true, filePaths: [] }
   }
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await dialog.showOpenDialog(win, {
     properties: ['openFile', 'multiSelections'],
     title: '选择文件',
   })
@@ -321,11 +355,12 @@ ipcMain.handle('dialog-open-file', async () => {
 })
 
 // 选择本地文件夹
-ipcMain.handle('dialog-open-directory', async () => {
-  if (!mainWindow || mainWindow.isDestroyed()) {
+ipcMain.handle('dialog-open-directory', async (event: IpcMainInvokeEvent) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || win.isDestroyed()) {
     return { canceled: true, filePaths: [] }
   }
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await dialog.showOpenDialog(win, {
     properties: ['openDirectory'],
     title: '选择文件夹',
   })
@@ -333,11 +368,12 @@ ipcMain.handle('dialog-open-directory', async () => {
 })
 
 // 选择保存位置
-ipcMain.handle('dialog-save-file', async (_event: IpcMainInvokeEvent, defaultPath?: string) => {
-  if (!mainWindow || mainWindow.isDestroyed()) {
+ipcMain.handle('dialog-save-file', async (event: IpcMainInvokeEvent, defaultPath?: string) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || win.isDestroyed()) {
     return { canceled: true, filePath: '' }
   }
-  const result = await dialog.showSaveDialog(mainWindow, {
+  const result = await dialog.showSaveDialog(win, {
     title: '保存文件',
     defaultPath,
   })
@@ -407,6 +443,242 @@ ipcMain.handle('restore-servers', () => {
     return { success: true, servers: data.servers, groups: data.groups }
   }
   return { success: false }
+})
+
+// ==================== 跨窗口标签迁移 ====================
+
+// 拖拽悬停置顶：拖拽期间轮询光标位置，将光标下方的窗口置顶
+// 同时创建跟随光标的悬浮标签预览（跨窗口可见）
+let dragHoverTimer: ReturnType<typeof setInterval> | null = null
+let dragOverlayTimer: ReturnType<typeof setInterval> | null = null
+let dragSourceWinId: number | null = null
+let lastRaisedWinId: number | null = null
+let dragOverlay: BrowserWindow | null = null
+
+let lastDragOverWinId: number | null = null
+let hasLeftSource = false
+
+ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: string) => {
+  const sourceWin = BrowserWindow.fromWebContents(event.sender)
+  if (!sourceWin) return
+  dragSourceWinId = sourceWin.id
+  lastRaisedWinId = null
+  lastDragOverWinId = null
+  hasLeftSource = false
+
+  // 创建跟随光标的悬浮小窗口（screen-saver 级别，高于源窗口的 floating）
+  const escaped = tabName.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+  dragOverlay = new BrowserWindow({
+    width: 180,
+    height: 32,
+    frame: false,
+    transparent: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    hasShadow: false,
+    show: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  })
+  dragOverlay.setAlwaysOnTop(true, 'screen-saver')
+  dragOverlay.setIgnoreMouseEvents(true)
+  const html = `<body style="margin:0;background:transparent;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui,sans-serif;">
+    <div style="display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(22,119,255,0.9);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.2);font-size:12px;color:#fff;white-space:nowrap;max-width:170px;overflow:hidden;text-overflow:ellipsis;">
+      <span style="font-size:10px;">⊞</span>${escaped}
+    </div></body>`
+  dragOverlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+
+  if (dragHoverTimer) clearInterval(dragHoverTimer)
+  if (dragOverlayTimer) clearInterval(dragOverlayTimer)
+
+  // 16ms 定位悬浮窗（光标在标签左侧偏中位置，像抓着标签拖动）
+  dragOverlayTimer = setInterval(() => {
+    if (!dragOverlay || dragOverlay.isDestroyed()) return
+    const point = screen.getCursorScreenPoint()
+    dragOverlay.setBounds({ x: point.x - 90, y: point.y - 16, width: 180, height: 32 })
+    if (!dragOverlay.isVisible()) dragOverlay.showInactive()
+  }, 16)
+
+  // 150ms 检测置顶 + 跨窗口拖拽指示器
+  dragHoverTimer = setInterval(() => {
+    const srcWin = [...windows].find(w => w.id === dragSourceWinId && !w.isDestroyed())
+    const point = screen.getCursorScreenPoint()
+
+    // 判断光标是否在源窗口范围内
+    let inSource = false
+    if (srcWin) {
+      const srcBounds = srcWin.getBounds()
+      inSource = point.x >= srcBounds.x && point.x <= srcBounds.x + srcBounds.width &&
+          point.y >= srcBounds.y && point.y <= srcBounds.y + srcBounds.height
+    }
+
+    // 光标未曾离开源窗口且仍在源窗口内 → 源窗口优先，不检测目标（防止重叠误触发）
+    if (inSource && !hasLeftSource) {
+      if (srcWin) srcWin.setAlwaysOnTop(false)
+      if (lastDragOverWinId) {
+        const prevWin = [...windows].find(w => w.id === lastDragOverWinId && !w.isDestroyed())
+        if (prevWin) prevWin.webContents.send('tab-drag-leave')
+        lastDragOverWinId = null
+      }
+      return
+    }
+
+    if (!inSource) hasLeftSource = true
+
+    // 光标曾离开过源窗口 → 检查目标窗口（目标优先，解决重叠区域）
+    let foundTarget = false
+    for (const win of windows) {
+      if (win.id === dragSourceWinId || win.isDestroyed()) continue
+      const bounds = win.getBounds()
+      if (point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
+          point.y >= bounds.y && point.y <= bounds.y + bounds.height) {
+        if (srcWin) srcWin.setAlwaysOnTop(false)
+        if (win.id !== lastRaisedWinId) {
+          win.moveTop()
+          lastRaisedWinId = win.id
+        }
+        // 向目标窗口发送光标屏幕坐标，用于显示插入指示器
+        win.webContents.send('tab-drag-over', point.x)
+        if (lastDragOverWinId && lastDragOverWinId !== win.id) {
+          const prevWin = [...windows].find(w => w.id === lastDragOverWinId && !w.isDestroyed())
+          if (prevWin) prevWin.webContents.send('tab-drag-leave')
+        }
+        lastDragOverWinId = win.id
+        foundTarget = true
+        break
+      }
+    }
+
+    if (!foundTarget) {
+      // 清除目标窗口指示器
+      if (lastDragOverWinId) {
+        const prevWin = [...windows].find(w => w.id === lastDragOverWinId && !w.isDestroyed())
+        if (prevWin) prevWin.webContents.send('tab-drag-leave')
+        lastDragOverWinId = null
+      }
+
+      if (inSource) {
+        // 回到源窗口（无目标重叠）→ 置顶源窗口
+        if (srcWin) {
+          srcWin.setAlwaysOnTop(false)
+          srcWin.moveTop()
+        }
+      } else {
+        // 不在任何 SSHTools 窗口上，alwaysOnTop 防止第三方抢焦点
+        if (srcWin) srcWin.setAlwaysOnTop(true, 'floating')
+      }
+      lastRaisedWinId = null
+    }
+  }, 150)
+})
+
+ipcMain.handle('tab-drag-hover-end', () => {
+  if (dragHoverTimer) {
+    clearInterval(dragHoverTimer)
+    dragHoverTimer = null
+  }
+  if (dragOverlayTimer) {
+    clearInterval(dragOverlayTimer)
+    dragOverlayTimer = null
+  }
+  if (dragOverlay && !dragOverlay.isDestroyed()) {
+    dragOverlay.destroy()
+    dragOverlay = null
+  }
+  // 清除目标窗口的拖拽指示器
+  if (lastDragOverWinId) {
+    const prevWin = [...windows].find(w => w.id === lastDragOverWinId && !w.isDestroyed())
+    if (prevWin) prevWin.webContents.send('tab-drag-leave')
+    lastDragOverWinId = null
+  }
+  if (dragSourceWinId) {
+    const srcWin = [...windows].find(w => w.id === dragSourceWinId && !w.isDestroyed())
+    if (srcWin) srcWin.setAlwaysOnTop(false)
+  }
+  dragSourceWinId = null
+  lastRaisedWinId = null
+})
+
+// 标签拖出窗口：创建新窗口或转移到已有窗口
+ipcMain.handle('tab-tear-out', async (event: IpcMainInvokeEvent, data: { tabData: Record<string, unknown>; screenX: number; screenY: number }) => {
+  const { tabData } = data
+  const sourceWin = BrowserWindow.fromWebContents(event.sender)
+
+  // 用 screen.getCursorScreenPoint() 获取真实光标位置，
+  // 避免目标窗口 moveTop 后 dragend 坐标不准确的问题
+  const point = screen.getCursorScreenPoint()
+  const screenX = point.x
+  const screenY = point.y
+
+  // 检查光标是否在其他窗口上方
+  let targetWin: BrowserWindow | null = null
+  for (const win of windows) {
+    if (win === sourceWin || win.isDestroyed()) continue
+    const bounds = win.getBounds()
+    if (screenX >= bounds.x && screenX <= bounds.x + bounds.width &&
+        screenY >= bounds.y && screenY <= bounds.y + bounds.height) {
+      targetWin = win
+      break
+    }
+  }
+
+  // 光标仍在源窗口上 → 不是跨窗口拖拽，取消操作
+  if (!targetWin && sourceWin && !sourceWin.isDestroyed()) {
+    const srcBounds = sourceWin.getBounds()
+    if (screenX >= srcBounds.x && screenX <= srcBounds.x + srcBounds.width &&
+        screenY >= srcBounds.y && screenY <= srcBounds.y + srcBounds.height) {
+      return { action: 'none' }
+    }
+  }
+
+  const connectionId = tabData.connectionId as string | undefined
+
+  if (targetWin) {
+    // 转移到已有窗口（附带光标坐标用于计算插入位置）
+    if (connectionId) {
+      sshManager.setConnectionTarget(connectionId, targetWin.webContents)
+    }
+    targetWin.webContents.send('tab-received', { ...tabData, _screenX: screenX, _screenY: screenY })
+    // 置顶目标窗口并获取焦点
+    const tw = targetWin
+    setTimeout(() => {
+      if (!tw.isDestroyed()) {
+        tw.moveTop()
+        tw.focus()
+      }
+    }, 100)
+    return { action: 'transferred', windowId: targetWin.id }
+  } else {
+    // 创建新窗口
+    const newWin = createWindow()
+    pendingTabData.set(newWin.id, tabData)
+
+    // 将新窗口定位到鼠标位置附近
+    const winBounds = newWin.getBounds()
+    newWin.setBounds({
+      x: Math.max(0, screenX - Math.floor(winBounds.width / 2)),
+      y: Math.max(0, screenY - 30),
+      width: winBounds.width,
+      height: winBounds.height,
+    })
+    // 立即显示并聚焦，避免拖拽结束到窗口显示之间其他应用被 Windows 置顶
+    newWin.show()
+    newWin.focus()
+
+    if (connectionId) {
+      sshManager.setConnectionTarget(connectionId, newWin.webContents)
+    }
+    return { action: 'created', windowId: newWin.id }
+  }
+})
+
+// 新窗口获取初始标签数据
+ipcMain.handle('get-init-tabs', (event: IpcMainInvokeEvent) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) return null
+  const data = pendingTabData.get(win.id)
+  pendingTabData.delete(win.id)
+  return data || null
 })
 
 // 应用准备就绪

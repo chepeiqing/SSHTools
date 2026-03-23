@@ -66,7 +66,7 @@ export interface ElectronAPI {
   sshConnect: (config: SSHConnectionConfig) => Promise<{ success: boolean; error?: string }>
   sshDisconnect: (id: string) => Promise<{ success: boolean }>
   sshIsConnected: (id: string) => Promise<boolean>
-  sshStartShell: (id: string) => Promise<{ success: boolean; error?: string }>
+  sshStartShell: (id: string) => Promise<{ success: boolean; reused?: boolean; buffer?: string; error?: string }>
   sshWrite: (id: string, data: string) => Promise<{ success: boolean }>
   sshResize: (id: string, cols: number, rows: number) => Promise<{ success: boolean }>
 
@@ -122,6 +122,13 @@ export interface ElectronAPI {
   // 服务器配置备份
   backupServers: (data: { servers: Record<string, unknown>[]; groups: Record<string, unknown>[] }) => Promise<{ success: boolean }>
   restoreServers: () => Promise<{ success: boolean; servers?: Record<string, unknown>[]; groups?: Record<string, unknown>[] }>
+
+  // 跨窗口标签迁移
+  tabDragHoverStart: () => Promise<void>
+  tabDragHoverEnd: () => Promise<void>
+  tabTearOut: (data: { tabData: Record<string, unknown>; screenX: number; screenY: number }) => Promise<{ action: string; windowId: number }>
+  getInitTabs: () => Promise<Record<string, unknown> | null>
+  onTabReceived: (callback: (tabData: Record<string, unknown>) => void) => () => void
 }
 
 declare global {

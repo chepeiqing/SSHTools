@@ -1,5 +1,5 @@
 import { Client, ClientChannel, ConnectConfig, SFTPWrapper } from 'ssh2'
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, WebContents } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { stat as fsStat } from 'fs/promises'
@@ -40,9 +40,15 @@ class SSHManager {
   private connections: Map<string, Client> = new Map()
   private shellStreams: Map<string, ClientChannel> = new Map()
   private sftpConnections: Map<string, SFTPWrapper> = new Map()
-  private mainWindow: BrowserWindow | null = null
+  // 每个连接对应的渲染进程（多窗口支持）
+  private connectionTargets: Map<string, WebContents> = new Map()
+  // 所有已注册的窗口（用于广播）
+  private windowRegistry: Set<WebContents> = new Set()
   // 临时屏蔽 shell 输出转发到终端（获取 CWD 时使用）
   private suppressShellOutput: Set<string> = new Set()
+  // shell 输出缓冲区（用于跨窗口迁移时回放终端内容）
+  private shellBuffers: Map<string, string> = new Map()
+  private static MAX_SHELL_BUFFER = 100 * 1024 // 100KB
   // 连接创建时间，用于清理残留的测试连接
   private connectionCreatedAt: Map<string, number> = new Map()
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
@@ -63,8 +69,29 @@ class SSHManager {
     }
   }
 
-  setMainWindow(window: BrowserWindow) {
-    this.mainWindow = window
+  setMainWindow(_window: BrowserWindow) {
+    // 兼容旧调用（由 registerWindow 替代）
+  }
+
+  // 注册窗口（新建窗口时调用）
+  registerWindow(wc: WebContents) {
+    this.windowRegistry.add(wc)
+  }
+
+  // 注销窗口（窗口关闭时调用）
+  unregisterWindow(wc: WebContents) {
+    this.windowRegistry.delete(wc)
+    // 清理指向此窗口的连接目标
+    for (const [id, target] of this.connectionTargets) {
+      if (target === wc) {
+        this.connectionTargets.delete(id)
+      }
+    }
+  }
+
+  // 设置连接目标窗口（跨窗口标签迁移时调用）
+  setConnectionTarget(connectionId: string, wc: WebContents) {
+    this.connectionTargets.set(connectionId, wc)
   }
 
   // 验证连接配置
@@ -117,7 +144,7 @@ class SSHManager {
   }
 
   // 建立 SSH 连接
-  connect(config: SSHConnectionConfig): Promise<{ success: boolean; error?: string }> {
+  connect(config: SSHConnectionConfig, sender?: WebContents): Promise<{ success: boolean; error?: string }> {
     return new Promise((resolve) => {
       const validationError = this.validateConfig(config)
       if (validationError) {
@@ -162,14 +189,18 @@ class SSHManager {
       conn.on('ready', () => {
         this.connections.set(id, conn)
         this.connectionCreatedAt.set(id, Date.now())
-        this.sendToRenderer('ssh-connected', { id })
+        // 绑定连接到发起请求的窗口
+        if (sender && !sender.isDestroyed()) {
+          this.connectionTargets.set(id, sender)
+        }
+        this.sendToConnection(id, 'ssh-connected', { id })
         safeResolve({ success: true })
       })
 
       conn.on('error', (err) => {
         this.connections.delete(id)
         this.shellStreams.delete(id)
-        this.sendToRenderer('ssh-error', { id, error: err.message })
+        this.sendToConnection(id, 'ssh-error', { id, error: err.message })
         safeResolve({ success: false, error: err.message })
       })
 
@@ -177,7 +208,8 @@ class SSHManager {
         this.connections.delete(id)
         this.shellStreams.delete(id)
         this.sftpConnections.delete(id)
-        this.sendToRenderer('ssh-disconnected', { id })
+        this.sendToConnection(id, 'ssh-disconnected', { id })
+        this.connectionTargets.delete(id)
       })
 
       conn.on('keyboard-interactive', (_name, _instructions, _lang, prompts, finish) => {
@@ -205,6 +237,7 @@ class SSHManager {
       try { stream.close() } catch { /* ignore */ }
       this.shellStreams.delete(id)
     }
+    this.shellBuffers.delete(id)
 
     // 关闭 SFTP
     const sftp = this.sftpConnections.get(id)
@@ -221,6 +254,7 @@ class SSHManager {
     }
 
     this.connectionCreatedAt.delete(id)
+    this.connectionTargets.delete(id)
   }
 
   // 检查连接状态
@@ -229,7 +263,7 @@ class SSHManager {
   }
 
   // 启动 Shell
-  startShell(id: string): Promise<{ success: boolean; error?: string }> {
+  startShell(id: string): Promise<{ success: boolean; reused?: boolean; error?: string }> {
     return new Promise((resolve) => {
       const conn = this.connections.get(id)
       if (!conn) {
@@ -237,11 +271,10 @@ class SSHManager {
         return
       }
 
-      // 如果已有 shell stream，先关闭旧的
-      const existingStream = this.shellStreams.get(id)
-      if (existingStream) {
-        try { existingStream.close() } catch { /* ignore */ }
-        this.shellStreams.delete(id)
+      // 如果已有 shell stream，直接复用（跨窗口迁移时保留会话）
+      if (this.shellStreams.has(id)) {
+        resolve({ success: true, reused: true, buffer: this.shellBuffers.get(id) || '' })
+        return
       }
 
       conn.shell({
@@ -257,18 +290,34 @@ class SSHManager {
         // 接收终端数据并发送到渲染进程
         stream.on('data', (data: Buffer) => {
           if (!this.suppressShellOutput.has(id)) {
-            this.sendToRenderer('ssh-data', { id, data: data.toString('utf-8') })
+            const str = data.toString('utf-8')
+            // 累积到缓冲区（迁移时回放）
+            let buf = this.shellBuffers.get(id) || ''
+            buf += str
+            if (buf.length > SSHManager.MAX_SHELL_BUFFER) {
+              buf = buf.slice(-SSHManager.MAX_SHELL_BUFFER)
+            }
+            this.shellBuffers.set(id, buf)
+            this.sendToConnection(id, 'ssh-data', { id, data: str })
           }
         })
 
         stream.on('close', () => {
           this.shellStreams.delete(id)
-          this.sendToRenderer('ssh-shell-closed', { id })
+          this.shellBuffers.delete(id)
+          this.sendToConnection(id, 'ssh-shell-closed', { id })
         })
 
         stream.stderr.on('data', (data: Buffer) => {
           if (!this.suppressShellOutput.has(id)) {
-            this.sendToRenderer('ssh-data', { id, data: data.toString('utf-8') })
+            const str = data.toString('utf-8')
+            let buf = this.shellBuffers.get(id) || ''
+            buf += str
+            if (buf.length > SSHManager.MAX_SHELL_BUFFER) {
+              buf = buf.slice(-SSHManager.MAX_SHELL_BUFFER)
+            }
+            this.shellBuffers.set(id, buf)
+            this.sendToConnection(id, 'ssh-data', { id, data: str })
           }
         })
 
@@ -1053,10 +1102,11 @@ class SSHManager {
     return result
   }
 
-  // 发送消息到渲染进程
-  private sendToRenderer(channel: string, data: Record<string, unknown>) {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send(channel, data)
+  // 发送消息到连接对应的渲染进程
+  private sendToConnection(connectionId: string, channel: string, data: Record<string, unknown>) {
+    const wc = this.connectionTargets.get(connectionId)
+    if (wc && !wc.isDestroyed()) {
+      wc.send(channel, data)
     }
   }
 

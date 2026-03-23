@@ -92,13 +92,11 @@
   background: var(--primary-soft);
 }
 
-/* Tab drag reorder */
-.main-tabs .ant-tabs-tab[draggable="true"] {
-  cursor: grab;
-}
-
-.main-tabs .ant-tabs-tab[draggable="true"]:active {
-  cursor: grabbing;
+/* Tab drag reorder — 拖拽期间强制 grabbing 光标 */
+body.tab-dragging-active,
+body.tab-dragging-active * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 .main-tabs .ant-tabs-tab.tab-drop-left {
@@ -107,6 +105,31 @@
 
 .main-tabs .ant-tabs-tab.tab-drop-right {
   box-shadow: inset -2px 0 0 0 var(--primary-color) !important;
+}
+
+
+/* Tear-off hint toast */
+.tab-tearoff-hint {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 8px 20px;
+  background: var(--primary-color);
+  color: #fff;
+  border-radius: 20px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+}
+
+.tab-tearoff-hint.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* Sidebar Toggle Button */
