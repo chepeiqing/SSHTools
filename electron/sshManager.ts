@@ -1,7 +1,6 @@
 import { Client, ClientChannel, ConnectConfig, SFTPWrapper } from 'ssh2'
 import { BrowserWindow } from 'electron'
 import path from 'path'
-import os from 'os'
 import fs from 'fs'
 import { stat as fsStat } from 'fs/promises'
 
@@ -106,24 +105,13 @@ class SSHManager {
     return null
   }
 
-  // 验证本地路径安全性（防止目录穿越写入系统任意位置）
+  // 验证本地路径安全性（防止异常路径）
   private validateLocalPath(localPath: string): string | null {
     if (!localPath || typeof localPath !== 'string') {
       return '本地路径不能为空'
     }
     if (localPath.includes('\0')) {
       return '路径包含非法字符'
-    }
-    // 解析绝对路径后检查是否包含 .. 穿越
-    const resolved = path.resolve(localPath)
-    const homeDir = process.env.HOME || process.env.USERPROFILE || ''
-    // 允许在用户家目录及常见下载位置写入
-    if (homeDir && !resolved.startsWith(homeDir)) {
-      // 也允许系统临时目录
-      const tmpDir = os.tmpdir()
-      if (!resolved.startsWith(tmpDir)) {
-        return '本地路径不在允许的范围内'
-      }
     }
     return null
   }

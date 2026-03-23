@@ -109,6 +109,10 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
   const [newFileDialogVisible, setNewFileDialogVisible] = useState(false)
   const [newFileName_, setNewFileName_] = useState('')
 
+  // 新建文件夹弹窗
+  const [newFolderDialogVisible, setNewFolderDialogVisible] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+
   // 传输队列
   const [transferQueue, setTransferQueue] = useState<TransferTask[]>([])
   const [queueExpanded, setQueueExpanded] = useState(true)
@@ -499,42 +503,33 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
   // 创建文件夹
   const handleCreateFolder = async () => {
     if (!connectionId || !sftpReady) return
+    setNewFolderDialogVisible(true)
+    setNewFolderName('')
+  }
 
-    let folderName = ''
-    modal.confirm({
-      title: '新建文件夹',
-      content: (
-        <Input
-          placeholder="请输入文件夹名称"
-          autoFocus
-          onChange={(e) => { folderName = e.target.value }}
-        />
-      ),
-      okText: '确定',
-      cancelText: '取消',
-      centered: true,
-      onOk: async () => {
-        const trimmed = folderName.trim()
-        if (!trimmed) {
-          message.error('请输入文件夹名称')
-          return
-        }
-        if (trimmed.includes('/') || trimmed.includes('\\')) {
-          message.error('文件夹名称不能包含路径分隔符')
-          return
-        }
+  const handleCreateFolderConfirm = async () => {
+    if (!connectionId || !sftpReady) return
 
-        const folderPath = joinRemotePath(remotePath, trimmed)
-        const result = await window.electronAPI.sftpMkdir(connectionId, folderPath)
+    const trimmed = newFolderName.trim()
+    if (!trimmed) {
+      message.error('请输入文件夹名称')
+      return
+    }
+    if (trimmed.includes('/') || trimmed.includes('\\')) {
+      message.error('文件夹名称不能包含路径分隔符')
+      return
+    }
 
-        if (result.success) {
-          message.success('创建成功')
-          refreshRemote()
-        } else {
-          message.error(`创建失败: ${result.error}`)
-        }
-      },
-    })
+    const folderPath = joinRemotePath(remotePath, trimmed)
+    const result = await window.electronAPI.sftpMkdir(connectionId, folderPath)
+
+    if (result.success) {
+      message.success('创建成功')
+      setNewFolderDialogVisible(false)
+      refreshRemote()
+    } else {
+      message.error(`创建失败: ${result.error}`)
+    }
   }
 
   // 创建空文件
@@ -1418,14 +1413,21 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
         onCancel={() => setRenameVisible(false)}
         okText="确定"
         cancelText="取消"
+        width={400}
         centered
+        destroyOnHidden
+        className="group-modal"
       >
-        <Input
-          value={newFileName}
-          onChange={(e) => setNewFileName(e.target.value)}
-          placeholder="请输入新名称"
-          autoFocus
-        />
+        <div className="group-modal-body">
+          <Input
+            value={newFileName}
+            onChange={(e) => setNewFileName(e.target.value)}
+            onPressEnter={handleRenameConfirm}
+            placeholder="请输入新名称"
+            autoFocus
+            size="large"
+          />
+        </div>
       </Modal>
 
       {/* 修改权限弹窗 */}
@@ -1436,19 +1438,26 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
         onCancel={() => setChmodVisible(false)}
         okText="确定"
         cancelText="取消"
+        width={400}
         centered
+        destroyOnHidden
+        className="group-modal"
       >
-        <div style={{ marginBottom: 12 }}>
-          <span style={{ marginRight: 8 }}>文件: {chmodFile?.name}</span>
-        </div>
-        <Input
-          value={chmodValue}
-          onChange={(e) => setChmodValue(e.target.value)}
-          placeholder="请输入权限值（如 755）"
-          addonBefore="权限"
-        />
-        <div style={{ marginTop: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-          常用权限: 755 (目录/可执行), 644 (普通文件), 777 (完全权限)
+        <div className="group-modal-body">
+          <div style={{ marginBottom: 12, color: 'var(--text-secondary)', fontSize: 13 }}>
+            文件: {chmodFile?.name}
+          </div>
+          <Input
+            value={chmodValue}
+            onChange={(e) => setChmodValue(e.target.value)}
+            onPressEnter={handleChmodConfirm}
+            placeholder="请输入权限值（如 755）"
+            addonBefore="权限"
+            size="large"
+          />
+          <div style={{ marginTop: 8, color: 'var(--text-tertiary)', fontSize: 12 }}>
+            常用权限: 755 (目录/可执行), 644 (普通文件), 777 (完全权限)
+          </div>
         </div>
       </Modal>
 
@@ -1460,14 +1469,46 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
         onCancel={() => setNewFileDialogVisible(false)}
         okText="确定"
         cancelText="取消"
+        width={400}
         centered
+        destroyOnHidden
+        className="group-modal"
       >
-        <Input
-          value={newFileName_}
-          onChange={(e) => setNewFileName_(e.target.value)}
-          placeholder="请输入文件名称"
-          autoFocus
-        />
+        <div className="group-modal-body">
+          <Input
+            value={newFileName_}
+            onChange={(e) => setNewFileName_(e.target.value)}
+            onPressEnter={handleCreateFileConfirm}
+            placeholder="请输入文件名称"
+            autoFocus
+            size="large"
+          />
+        </div>
+      </Modal>
+
+      {/* 新建文件夹弹窗 */}
+      <Modal
+        title="新建文件夹"
+        open={newFolderDialogVisible}
+        onOk={handleCreateFolderConfirm}
+        onCancel={() => setNewFolderDialogVisible(false)}
+        okText="确定"
+        cancelText="取消"
+        width={400}
+        centered
+        destroyOnHidden
+        className="group-modal"
+      >
+        <div className="group-modal-body">
+          <Input
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            onPressEnter={handleCreateFolderConfirm}
+            placeholder="请输入文件夹名称"
+            autoFocus
+            size="large"
+          />
+        </div>
       </Modal>
     </div>
   )
