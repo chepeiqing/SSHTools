@@ -352,6 +352,7 @@ body.tab-dragging-active * {
   max-width: 720px;
   margin-bottom: 20px;
   display: flex;
+  justify-content: center;
   gap: 12px;
   flex-wrap: wrap;
   flex-shrink: 0;
