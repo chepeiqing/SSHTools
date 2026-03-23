@@ -5,6 +5,7 @@ import MainContent from './components/MainContent'
 import SettingsModal from './components/SettingsModal'
 import ErrorBoundary from './components/ErrorBoundary'
 import { useThemeStore } from './stores/themeStore'
+import { initTerminalSettingsSync } from './stores/terminalThemeStore'
 import { hydrateCredentials, restoreFromBackup } from './stores/serverStore'
 import './styles/global.css'
 
@@ -15,6 +16,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     initTheme()
+    initTerminalSettingsSync()
     // 先从备份恢复配置（重新安装后 localStorage 为空），再恢复凭据
     restoreFromBackup().then(() => hydrateCredentials())
   }, [initTheme])

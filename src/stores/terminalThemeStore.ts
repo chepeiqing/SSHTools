@@ -290,6 +290,26 @@ export const lightPresets: Record<string, TerminalColorScheme> = {
 
 // ==================== Store ====================
 
+// 跨窗口同步标志，防止循环广播
+let _syncing = false
+
+function broadcastTerminalState(state: TerminalThemeState) {
+  if (_syncing) return
+  window.electronAPI?.broadcastSettings({
+    type: 'terminal-settings',
+    data: {
+      darkPresetId: state.darkPresetId,
+      lightPresetId: state.lightPresetId,
+      customDark: state.customDark,
+      customLight: state.customLight,
+      fontSize: state.fontSize,
+      fontFamily: state.fontFamily,
+      wordWrap: state.wordWrap,
+      scrollOnOutput: state.scrollOnOutput,
+    }
+  })
+}
+
 interface TerminalThemeState {
   darkPresetId: string
   lightPresetId: string
@@ -309,7 +329,7 @@ interface TerminalThemeState {
 
 export const useTerminalThemeStore = create<TerminalThemeState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       darkPresetId: 'default',
       lightPresetId: 'default',
       customDark: { foreground: '#cccccc', background: '#1e1e1e', cursor: '#007aff' },
@@ -318,17 +338,35 @@ export const useTerminalThemeStore = create<TerminalThemeState>()(
       fontFamily: '"JetBrains Mono Variable", Consolas, monospace',
       wordWrap: true,
       scrollOnOutput: true,
-      setPreset: (mode, id) => set(mode === 'dark' ? { darkPresetId: id } : { lightPresetId: id }),
-      setCustomColor: (mode, key, value) => set((state) => {
-        if (mode === 'dark') {
-          return { customDark: { ...state.customDark, [key]: value } }
-        }
-        return { customLight: { ...state.customLight, [key]: value } }
-      }),
-      setFontSize: (size) => set({ fontSize: Math.max(8, Math.min(32, size)) }),
-      setFontFamily: (family) => set({ fontFamily: family }),
-      setWordWrap: (value) => set({ wordWrap: value }),
-      setScrollOnOutput: (value) => set({ scrollOnOutput: value }),
+      setPreset: (mode, id) => {
+        set(mode === 'dark' ? { darkPresetId: id } : { lightPresetId: id })
+        broadcastTerminalState(get())
+      },
+      setCustomColor: (mode, key, value) => {
+        set((state) => {
+          if (mode === 'dark') {
+            return { customDark: { ...state.customDark, [key]: value } }
+          }
+          return { customLight: { ...state.customLight, [key]: value } }
+        })
+        broadcastTerminalState(get())
+      },
+      setFontSize: (size) => {
+        set({ fontSize: Math.max(8, Math.min(32, size)) })
+        broadcastTerminalState(get())
+      },
+      setFontFamily: (family) => {
+        set({ fontFamily: family })
+        broadcastTerminalState(get())
+      },
+      setWordWrap: (value) => {
+        set({ wordWrap: value })
+        broadcastTerminalState(get())
+      },
+      setScrollOnOutput: (value) => {
+        set({ scrollOnOutput: value })
+        broadcastTerminalState(get())
+      },
     }),
     { name: 'ssh-tools-terminal-theme' }
   )
@@ -355,4 +393,25 @@ export function getTerminalColorScheme(
   }
 
   return presets[presetId] || presets.default
+}
+
+// 初始化跨窗口终端设置同步监听
+export function initTerminalSettingsSync() {
+  return window.electronAPI?.onSettingsSync((payload) => {
+    if (payload.type === 'terminal-settings') {
+      const data = payload.data as Record<string, unknown>
+      _syncing = true
+      useTerminalThemeStore.setState({
+        darkPresetId: data.darkPresetId as string,
+        lightPresetId: data.lightPresetId as string,
+        customDark: data.customDark as { foreground: string; background: string; cursor: string },
+        customLight: data.customLight as { foreground: string; background: string; cursor: string },
+        fontSize: data.fontSize as number,
+        fontFamily: data.fontFamily as string,
+        wordWrap: data.wordWrap as boolean,
+        scrollOnOutput: data.scrollOnOutput as boolean,
+      })
+      _syncing = false
+    }
+  })
 }

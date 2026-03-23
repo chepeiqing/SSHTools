@@ -67,6 +67,10 @@ export interface ElectronAPI {
   onWindowMaximized: (callback: () => void) => () => void
   onWindowUnmaximized: (callback: () => void) => () => void
 
+  // 设置同步（跨窗口广播）
+  broadcastSettings: (payload: { type: string; data: unknown }) => Promise<void>
+  onSettingsSync: (callback: (payload: { type: string; data: unknown }) => void) => () => void
+
   // SSH 相关
   sshConnect: (config: SSHConnectionConfig) => Promise<{ success: boolean; error?: string }>
   sshDisconnect: (id: string) => Promise<{ success: boolean }>

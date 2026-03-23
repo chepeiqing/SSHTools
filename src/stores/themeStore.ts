@@ -80,6 +80,21 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
         set({ actualTheme: theme })
       }
     })
+
+    // 监听其他窗口的主题变更
+    window.electronAPI?.onSettingsSync((payload) => {
+      if (payload.type === 'theme') {
+        const { mode } = (payload.data as { mode: ThemeMode })
+        set({ mode })
+        if (mode === 'system') {
+          window.electronAPI?.getSystemTheme().then((actual) => {
+            set({ actualTheme: actual || 'light' })
+          })
+        } else {
+          set({ actualTheme: mode })
+        }
+      }
+    })
   },
 }))
 

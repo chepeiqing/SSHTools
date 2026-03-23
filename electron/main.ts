@@ -112,13 +112,28 @@ ipcMain.handle('get-theme', () => {
   return getInitialTheme()
 })
 
-ipcMain.handle('set-theme', (_event: IpcMainInvokeEvent, theme: 'light' | 'dark' | 'system') => {
+ipcMain.handle('set-theme', (event: IpcMainInvokeEvent, theme: 'light' | 'dark' | 'system') => {
   applyTheme(theme)
+  // 广播到其他窗口
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.webContents !== event.sender && !win.webContents.isDestroyed()) {
+      win.webContents.send('settings-sync', { type: 'theme', data: { mode: theme } })
+    }
+  }
   return true
 })
 
 ipcMain.handle('get-system-theme', () => {
   return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+})
+
+// 设置同步广播（终端设置变化时由渲染进程调用，广播给其他窗口）
+ipcMain.handle('broadcast-settings', (event: IpcMainInvokeEvent, payload: { type: string; data: unknown }) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.webContents !== event.sender && !win.webContents.isDestroyed()) {
+      win.webContents.send('settings-sync', payload)
+    }
+  }
 })
 
 // 窗口控制

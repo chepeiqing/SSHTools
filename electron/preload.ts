@@ -12,6 +12,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('system-theme-changed', handler)
   },
 
+  // 设置同步（跨窗口广播）
+  broadcastSettings: (payload: { type: string; data: unknown }) =>
+    ipcRenderer.invoke('broadcast-settings', payload),
+  onSettingsSync: (callback: (payload: { type: string; data: unknown }) => void) => {
+    const handler = (_event: any, payload: { type: string; data: unknown }) => callback(payload)
+    ipcRenderer.on('settings-sync', handler)
+    return () => ipcRenderer.removeListener('settings-sync', handler)
+  },
+
   // 窗口控制
   minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window-maximize'),
