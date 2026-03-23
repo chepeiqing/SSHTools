@@ -632,6 +632,22 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
     setRenameVisible(true)
   }
 
+  const doRename = async (trimmed: string) => {
+    if (!connectionId || !sftpReady || !renameFile) return
+
+    const oldPath = joinRemotePath(remotePath, renameFile.name)
+    const newPath = joinRemotePath(remotePath, trimmed)
+    const result = await window.electronAPI.sftpRename(connectionId, oldPath, newPath)
+
+    if (result.success) {
+      message.success('重命名成功')
+      setRenameVisible(false)
+      refreshRemote()
+    } else {
+      message.error(`重命名失败: ${result.error}`)
+    }
+  }
+
   const handleRenameConfirm = async () => {
     if (!connectionId || !sftpReady || !renameFile) return
 
@@ -649,17 +665,20 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       return
     }
 
-    const oldPath = joinRemotePath(remotePath, renameFile.name)
-    const newPath = joinRemotePath(remotePath, trimmed)
-    const result = await window.electronAPI.sftpRename(connectionId, oldPath, newPath)
-
-    if (result.success) {
-      message.success('重命名成功')
-      setRenameVisible(false)
-      refreshRemote()
-    } else {
-      message.error(`重命名失败: ${result.error}`)
+    const conflict = remoteFiles.find(f => f.name === trimmed && f.name !== renameFile.name)
+    if (conflict) {
+      modal.confirm({
+        title: '目标已存在',
+        content: `"${trimmed}" 已存在，是否覆盖？`,
+        okText: '覆盖',
+        cancelText: '取消',
+        centered: true,
+        onOk: () => doRename(trimmed),
+      })
+      return
     }
+
+    doRename(trimmed)
   }
 
   // 修改权限
