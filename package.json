@@ -94,11 +94,12 @@
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
       ],
       "icon": "build/icon.png",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "artifactName": "${productName}_${version}_mac_${arch}.${ext}"
     },
     "linux": {
       "target": [

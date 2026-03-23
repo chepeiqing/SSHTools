@@ -67,6 +67,8 @@
 
 .dark {
   /* 深色模式 */
+  color-scheme: dark;
+  caret-color: var(--text-color);
   --bg-color: #1a1a1e;
   --bg-secondary: #222226;
   --bg-tertiary: #2c2c30;
