@@ -27,34 +27,34 @@
 /* ==================== CSS 变量 (macOS 风格) ==================== */
 :root {
   /* 浅色模式 - 清晰大气 */
-  --bg-color: #ffffff;
-  --bg-secondary: #f5f5f7;
-  --bg-tertiary: #eeeef0;
+  --bg-color: #fcfbf8;
+  --bg-secondary: #f4f1ea;
+  --bg-tertiary: #ffffff;
   --bg-elevated: #ffffff;
-  --bg-glass: rgba(255, 255, 255, 0.85);
+  --bg-glass: rgba(252, 251, 248, 0.86);
 
-  --text-color: #1d1d1f;
-  --text-secondary: #494950;
-  --text-tertiary: #86868b;
+  --text-color: #1f2328;
+  --text-secondary: #5d6673;
+  --text-tertiary: #8a919d;
 
-  --border-color: #d2d2d7;
-  --border-glass: rgba(0, 0, 0, 0.06);
+  --border-color: #e6dfd4;
+  --border-glass: rgba(62, 46, 14, 0.08);
 
-  --primary-color: #0071e3;
-  --primary-hover: #0060c0;
-  --primary-active: #004fa3;
-  --primary-soft: rgba(0, 113, 227, 0.1);
-  --primary-rgb: 0, 113, 227;
+  --primary-color: #3f6f97;
+  --primary-hover: #355f83;
+  --primary-active: #294b67;
+  --primary-soft: rgba(63, 111, 151, 0.1);
+  --primary-rgb: 63, 111, 151;
 
-  --success-color: #28a745;
-  --warning-color: #f5a623;
-  --error-color: #e53e3e;
+  --success-color: #2f9e62;
+  --warning-color: #b3874f;
+  --error-color: #c56b63;
 
-  --hover-bg: rgba(0, 0, 0, 0.04);
-  --active-bg: rgba(0, 113, 227, 0.08);
-  --shadow-color: rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.1);
+  --hover-bg: rgba(15, 108, 189, 0.06);
+  --active-bg: rgba(15, 108, 189, 0.1);
+  --shadow-color: rgba(31, 35, 40, 0.08);
+  --shadow-md: 0 8px 24px rgba(31, 35, 40, 0.08);
+  --shadow-lg: 0 18px 42px rgba(31, 35, 40, 0.1);
 
   --radius-sm: 4px;
   --radius-md: 8px;
@@ -106,7 +106,7 @@ html, body, #root {
   background: var(--bg-color);
   color: var(--text-color);
   transition: background-color 0.3s, color 0.3s;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'SF Pro Display', 'PingFang SC', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

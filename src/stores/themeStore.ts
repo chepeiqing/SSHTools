@@ -15,13 +15,13 @@ interface ThemeState {
 
 // 主题token配置
 const lightToken = {
-  colorPrimary: '#1677ff',
+  colorPrimary: '#3f6f97',
   colorBgContainer: '#ffffff',
   colorBgElevated: '#ffffff',
-  colorBgLayout: '#f5f5f5',
-  colorText: '#1f1f1f',
-  colorTextSecondary: '#666666',
-  colorBorder: '#d9d9d9',
+  colorBgLayout: '#f4f1ea',
+  colorText: '#1f2328',
+  colorTextSecondary: '#5d6673',
+  colorBorder: '#e6dfd4',
 }
 
 const darkToken = {

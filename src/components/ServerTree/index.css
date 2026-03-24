@@ -1,14 +1,12 @@
-/* Tree Styling */
 .session-tree {
   background: transparent !important;
 }
 
-/* ==================== 分组标题 ==================== */
 .tree-group-title {
   display: flex !important;
   align-items: center !important;
   width: 100%;
-  padding: 10px 0 6px;
+  padding: 14px 6px 8px;
 }
 
 .group-icon {
@@ -18,40 +16,52 @@
 }
 
 .group-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
 }
 
 .group-count-badge {
   margin-left: auto;
   color: var(--text-tertiary);
   font-size: 11px;
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
-/* ==================== 服务器表格（detail 模式） ==================== */
 .server-table-row {
   display: grid;
-  grid-template-columns: 12px 160px 1fr 140px 80px;
+  grid-template-columns: 12px minmax(180px, 240px) minmax(220px, 1fr) auto;
+  grid-template-areas:
+    "status name desc time"
+    "status host host time";
   align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
-  border-radius: var(--radius-md, 6px);
+  column-gap: 14px;
+  row-gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg, 12px);
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.18s;
   font-size: 13px;
-  min-height: 32px;
+  min-height: 56px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  box-shadow: 0 2px 8px rgba(31, 35, 40, 0.04);
 }
 
 .server-table-row:hover {
-  background: var(--hover-bg, rgba(255, 255, 255, 0.04));
+  background: var(--bg-tertiary);
+  border-color: rgba(var(--primary-rgb), 0.22);
+  box-shadow: 0 12px 24px rgba(31, 35, 40, 0.08);
+  transform: translateY(-1px);
 }
 
-/* 选中态（通过 Tree 选中） */
 .session-tree .ant-tree-node-selected .server-table-row {
-  background: var(--primary-soft, rgba(22, 119, 255, 0.08)) !important;
+  background: color-mix(in srgb, var(--primary-soft) 42%, var(--bg-tertiary)) !important;
+  border-color: rgba(var(--primary-rgb), 0.24) !important;
+  box-shadow: 0 10px 24px rgba(var(--primary-rgb), 0.1) !important;
 }
 
 .session-tree .ant-tree-node-selected .server-table-name {
@@ -59,7 +69,9 @@
 }
 
 .server-table-name {
+  grid-area: name;
   font-weight: 600;
+  font-size: 13px;
   color: var(--text-color);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -67,7 +79,8 @@
 }
 
 .server-table-host {
-  font-size: 12px;
+  grid-area: host;
+  font-size: 11px;
   color: var(--text-secondary);
   font-family: 'Fira Code', monospace;
   overflow: hidden;
@@ -76,36 +89,43 @@
 }
 
 .server-table-desc {
+  grid-area: desc;
   font-size: 12px;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  justify-self: end;
+  max-width: 320px;
 }
 
 .server-table-time {
+  grid-area: time;
   font-size: 11px;
   color: var(--text-tertiary);
   text-align: right;
   white-space: nowrap;
+  align-self: start;
 }
 
-/* ==================== 服务器行（侧边栏简洁模式） ==================== */
 .tree-server-card {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 8px 12px;
-  border-radius: var(--radius-md, 8px);
+  padding: 10px 12px;
+  border-radius: var(--radius-lg, 12px);
   box-sizing: border-box;
-  transition: background 0.15s;
+  transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
   position: relative;
   cursor: pointer;
+  border: 1px solid transparent;
 }
 
 .tree-server-card:hover {
-  background: var(--hover-bg, rgba(255, 255, 255, 0.04));
+  background: color-mix(in srgb, var(--bg-tertiary) 88%, var(--bg-secondary));
+  border-color: rgba(var(--primary-rgb), 0.18);
+  box-shadow: 0 8px 18px rgba(31, 35, 40, 0.06);
 }
 
 .server-info {
@@ -134,8 +154,8 @@
   white-space: nowrap;
 }
 
-/* ==================== 状态圆点 ==================== */
 .server-status-dot {
+  grid-area: status;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -146,13 +166,13 @@
 
 .server-status-dot.connected {
   background: var(--success-color);
-  box-shadow: 0 0 6px var(--success-color);
+  box-shadow: 0 0 0 3px rgba(47, 158, 98, 0.14);
   opacity: 1;
 }
 
 .server-status-dot.connecting {
   background: var(--warning-color);
-  box-shadow: 0 0 6px var(--warning-color);
+  box-shadow: 0 0 0 3px rgba(201, 138, 28, 0.14);
   opacity: 1;
 }
 
@@ -162,7 +182,6 @@
   opacity: 0.4;
 }
 
-/* ==================== Ant Tree 覆盖 ==================== */
 .session-tree .ant-tree-treenode {
   width: 100% !important;
   padding: 0 !important;
@@ -172,7 +191,7 @@
 
 .session-tree .ant-tree-node-content-wrapper {
   background: transparent !important;
-  padding: 0 !important;
+  padding: 0 2px !important;
   width: 100% !important;
   transition: none !important;
 }
@@ -181,16 +200,15 @@
   background: transparent !important;
 }
 
-/* 选中态 */
 .session-tree .ant-tree-node-selected .tree-server-card {
-  background: var(--primary-soft, rgba(22, 119, 255, 0.08)) !important;
+  background: color-mix(in srgb, var(--primary-soft) 42%, var(--bg-tertiary)) !important;
+  border-color: rgba(var(--primary-rgb), 0.22) !important;
 }
 
 .session-tree .ant-tree-node-selected .server-name {
   color: var(--primary-color) !important;
 }
 
-/* 隐藏叶子节点的 switcher 占位 */
 .session-tree .ant-tree-switcher.ant-tree-switcher-noop {
   width: 0 !important;
   min-width: 0 !important;
@@ -198,7 +216,6 @@
   margin: 0 !important;
 }
 
-/* Switcher 箭头 */
 .session-tree .ant-tree-switcher {
   display: flex !important;
   align-items: center !important;
@@ -236,12 +253,10 @@
   justify-content: center !important;
 }
 
-/* 拖拽手柄（draggable 模式下的图标） */
 .session-tree .ant-tree-draggable-icon {
   display: none !important;
 }
 
-/* 缩进连线 */
 .session-tree .ant-tree-indent-unit {
   position: relative;
   width: 20px !important;
@@ -254,10 +269,9 @@
   height: 100%;
   width: 1px;
   background: var(--border-color);
-  opacity: 0.5;
+  opacity: 0.35;
 }
 
-/* ==================== 拖拽样式 ==================== */
 .session-tree .ant-tree-treenode.dragging {
   opacity: 0.4;
 }
@@ -270,4 +284,19 @@
 .session-tree .ant-tree-drop-indicator {
   background: var(--primary-color) !important;
   height: 2px !important;
+}
+
+@media (max-width: 980px) {
+  .server-table-row {
+    grid-template-columns: 12px minmax(140px, 1fr) auto;
+    grid-template-areas:
+      "status name time"
+      "status host host"
+      "status desc desc";
+  }
+
+  .server-table-desc {
+    justify-self: start;
+    max-width: none;
+  }
 }

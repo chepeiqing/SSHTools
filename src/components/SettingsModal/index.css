@@ -85,6 +85,33 @@
   color: var(--primary-color);
 }
 
+.settings-modal-theme-summary {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.settings-modal-theme-summary-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 4px;
+}
+
+.settings-modal-theme-summary-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.settings-modal-subsection-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+
 /* 主题模式选择 */
 .theme-mode-group {
   display: flex;

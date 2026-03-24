@@ -1198,6 +1198,15 @@ const MainContent: React.FC = () => {
     }
   }
 
+  const getStatusShadow = (status: string) => {
+    switch (status) {
+      case 'connected': return '0 0 0 3px rgba(47, 158, 98, 0.14)'
+      case 'connecting': return '0 0 0 3px rgba(201, 138, 28, 0.14)'
+      case 'error': return '0 0 0 3px rgba(216, 79, 79, 0.14)'
+      default: return 'none'
+    }
+  }
+
   // 构建右键菜单
   const buildContextMenu = (tabKey: string): MenuProps => {
     if (tabKey === HOME_TAB_KEY) {
@@ -1327,7 +1336,10 @@ const MainContent: React.FC = () => {
           <span className="tab-name">{tab.label}</span>
           <span
             className="tab-status-dot"
-            style={{ backgroundColor: getStatusColor(tab.status || 'disconnected') }}
+            style={{
+              backgroundColor: getStatusColor(tab.status || 'disconnected'),
+              boxShadow: getStatusShadow(tab.status || 'disconnected'),
+            }}
             title={tab.status}
           />
         </div>
@@ -1337,7 +1349,12 @@ const MainContent: React.FC = () => {
 
   // 获取当前活动标签
   const activeTab = tabs.find(t => t.key === activeKey)
-  const showDetailPanel = (activeTab?.type === 'terminal' || activeTab?.type === 'home') && detailPanelVisible
+  const canShowDetailPanel = (
+    activeTab?.type === 'terminal' ||
+    activeTab?.type === 'home' ||
+    activeTab?.type === 'serverList'
+  )
+  const showDetailPanel = canShowDetailPanel && detailPanelVisible
 
   // 新建分组处理
   const handleNewGroup = () => {
@@ -1390,20 +1407,22 @@ const MainContent: React.FC = () => {
   return (
     <div className="main-content">
       {/* 左侧详情面板容器 (可拖拽宽度) */}
-      {showDetailPanel && (
-        <DetailPanelResizer width={detailPanelWidth} onWidthChange={setDetailPanelWidth} position="left">
+      {activeTab && (
+        <DetailPanelResizer width={detailPanelWidth} onWidthChange={setDetailPanelWidth} visible={showDetailPanel} position="left">
           {activeTab?.type === 'terminal' ? (
             <ConnectionDetailPanel
               connectionId={activeTab.connectionId}
               serverName={activeTab.serverName}
             />
-          ) : (
+          ) : canShowDetailPanel ? (
             <HomeSidebar
               onNewSession={() => setNewSessionVisible(true)}
               onOpenCommands={openCommandsTab}
               onOpenServerList={openServerListTab}
               onConnectServer={connectAndCreateTab}
             />
+          ) : (
+            <div />
           )}
         </DetailPanelResizer>
       )}
@@ -1423,7 +1442,7 @@ const MainContent: React.FC = () => {
         }}
         className="main-tabs"
         tabBarExtraContent={{
-          left: activeTab?.type === 'terminal' || activeTab?.type === 'home' ? (
+          left: activeTab?.type === 'terminal' || activeTab?.type === 'home' || activeTab?.type === 'serverList' ? (
             <div className="tabbar-extra" style={{ paddingLeft: 4 }}>
               <Button
                 type="text"
@@ -1892,11 +1911,12 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
 interface DetailPanelResizerProps {
   width: number
   onWidthChange: (width: number) => void
+  visible: boolean
   children: React.ReactNode
   position?: 'left' | 'right'
 }
 
-const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthChange, children, position = 'left' }) => {
+const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthChange, visible, children, position = 'left' }) => {
   const [isResizing, setIsResizing] = useState(false)
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
@@ -1951,16 +1971,18 @@ const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthC
   }, [isResizing, onWidthChange, position, stopResizing])
 
   return (
-    <div className={`detail-panel-container visible ${position}`} style={{ width }}>
-      {position === 'right' && (
+    <div className={`detail-panel-container ${visible ? 'visible' : 'hidden'} ${position}`} style={{ width: visible ? width : 0 }}>
+      {position === 'right' && visible && (
         <div
           ref={resizeHandleRef}
           className={`detail-panel-drag-handle ${isResizing ? 'resizing' : ''}`}
           onPointerDown={handlePointerDown}
         />
       )}
-      {children}
-      {position === 'left' && (
+      <div className="detail-panel-content">
+        {children}
+      </div>
+      {position === 'left' && visible && (
         <div
           ref={resizeHandleRef}
           className={`detail-panel-drag-handle ${isResizing ? 'resizing' : ''}`}

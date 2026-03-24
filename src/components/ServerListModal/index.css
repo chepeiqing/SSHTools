@@ -4,81 +4,88 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  background: var(--bg-color);
+  align-items: stretch;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-secondary) 52%, var(--bg-color)),
+    var(--bg-color) 180px
+  );
   overflow: hidden;
 }
 
-/* 顶部固定区域：标题 + 搜索 */
 .server-list-topbar {
   flex-shrink: 0;
   width: 100%;
-  max-width: 860px;
-  padding: 20px 32px 12px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 22px 28px 14px;
   display: flex;
   align-items: center;
-  gap: 20px;
-  border-bottom: 1px solid var(--border-color);
+  gap: 16px;
 }
 
 .server-list-topbar-title {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-color);
   white-space: nowrap;
   flex-shrink: 0;
+  letter-spacing: -0.01em;
 }
 
 .server-list-search {
-  max-width: 320px;
-  height: 32px;
-  border-radius: 8px;
+  max-width: 360px;
+  height: 36px;
+  border-radius: 10px;
   font-size: 13px;
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
   border-color: var(--border-color);
+  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.04);
 }
 
 .server-list-search:hover,
 .server-list-search:focus-within {
-  border-color: var(--primary-color);
+  border-color: rgba(var(--primary-rgb), 0.24);
 }
 
 .server-list-topbar-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   flex-shrink: 0;
   margin-left: auto;
 }
 
 .server-list-action-btn {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-secondary) !important;
   border-radius: var(--radius-md, 8px);
   border: 1px solid var(--border-color) !important;
+  background: var(--bg-tertiary) !important;
+  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.04);
 }
 
 .server-list-action-btn:hover {
   color: var(--primary-color) !important;
-  background: var(--hover-bg) !important;
-  border-color: var(--primary-color) !important;
+  background: var(--bg-tertiary) !important;
+  border-color: rgba(var(--primary-rgb), 0.24) !important;
+  box-shadow: 0 8px 18px rgba(31, 35, 40, 0.08);
 }
 
-/* 树容器：填满剩余空间、自己滚动 */
 .server-list-tree-wrapper {
   flex: 1;
   width: 100%;
-  max-width: 860px;
+  max-width: 1120px;
+  margin: 0 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 32px 24px;
+  padding: 0 28px 28px;
 }
 
-/* 隐藏滚动条但保留滚动功能 */
 .server-list-tree-wrapper::-webkit-scrollbar {
   width: 6px;
 }

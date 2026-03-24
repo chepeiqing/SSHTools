@@ -42,11 +42,13 @@
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+  box-shadow: 0 2px 6px rgba(31, 35, 40, 0.04);
 }
 
 .quick-card:hover {
-  background: var(--active-bg);
-  border-color: var(--primary-color);
+  background: var(--bg-tertiary);
+  border-color: rgba(var(--primary-rgb), 0.22);
+  box-shadow: 0 12px 24px rgba(31, 35, 40, 0.08);
 }
 
 .quick-card-status {
@@ -62,7 +64,7 @@
 
 .quick-card-status.connected {
   background: var(--success-color);
-  box-shadow: 0 0 6px var(--success-color);
+  box-shadow: 0 0 0 3px rgba(47, 158, 98, 0.14);
 }
 
 .quick-card-status.connecting {
