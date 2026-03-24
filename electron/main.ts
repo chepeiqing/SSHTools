@@ -483,6 +483,37 @@ let dragOverlay: BrowserWindow | null = null
 
 let lastDragOverWinId: number | null = null
 let hasLeftSource = false
+let sourceDragSuspended = false
+
+function windowContainsPoint(win: BrowserWindow | undefined | null, point: { x: number; y: number }): boolean {
+  if (!win || win.isDestroyed() || win.isMinimized() || !win.isVisible()) return false
+  const bounds = win.getBounds()
+  return point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
+    point.y >= bounds.y && point.y <= bounds.y + bounds.height
+}
+
+function setSourceDragSuppressed(srcWin: BrowserWindow | undefined, suppress: boolean) {
+  if (!srcWin || srcWin.isDestroyed()) return
+  if (suppress === sourceDragSuspended) return
+  srcWin.webContents.send(suppress ? 'tab-drag-source-suspend' : 'tab-drag-source-resume')
+  sourceDragSuspended = suppress
+}
+
+function setSourceNewWindowHintVisible(srcWin: BrowserWindow | undefined, visible: boolean) {
+  if (!srcWin || srcWin.isDestroyed()) return
+  srcWin.webContents.send(visible ? 'tab-drag-source-show-new-window-hint' : 'tab-drag-source-hide-new-window-hint')
+}
+
+function clearActiveTargetHover() {
+  if (!lastDragOverWinId) return
+  for (const w of windows) {
+    if (w.id === lastDragOverWinId && !w.isDestroyed()) {
+      w.webContents.send('tab-drag-leave')
+      break
+    }
+  }
+  lastDragOverWinId = null
+}
 
 // 清理所有拖拽状态（tab-drag-hover-end 和窗口崩溃/关闭时共用）
 function cleanupDragState() {
@@ -498,18 +529,12 @@ function cleanupDragState() {
     dragOverlay.destroy()
     dragOverlay = null
   }
-  if (lastDragOverWinId) {
-    for (const w of windows) {
-      if (w.id === lastDragOverWinId && !w.isDestroyed()) {
-        w.webContents.send('tab-drag-leave')
-        break
-      }
-    }
-    lastDragOverWinId = null
-  }
+  clearActiveTargetHover()
   if (dragSourceWinId) {
     for (const w of windows) {
       if (w.id === dragSourceWinId && !w.isDestroyed()) {
+        setSourceDragSuppressed(w, false)
+        setSourceNewWindowHintVisible(w, false)
         w.setAlwaysOnTop(false)
         break
       }
@@ -531,6 +556,7 @@ ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: stri
   lastRaisedWinId = null
   lastDragOverWinId = null
   hasLeftSource = false
+  sourceDragSuspended = false
 
   // 创建跟随光标的悬浮小窗口（screen-saver 级别，高于源窗口的 floating）
   const escaped = tabName.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
@@ -569,82 +595,75 @@ ipcMain.handle('tab-drag-hover-start', (event: IpcMainInvokeEvent, tabName: stri
       if (w.id === dragSourceWinId && !w.isDestroyed()) { srcWin = w; break }
     }
     const point = screen.getCursorScreenPoint()
-
-    // 判断光标是否在源窗口范围内
-    let inSource = false
-    if (srcWin) {
-      const srcBounds = srcWin.getBounds()
-      inSource = point.x >= srcBounds.x && point.x <= srcBounds.x + srcBounds.width &&
-          point.y >= srcBounds.y && point.y <= srcBounds.y + srcBounds.height
+    const inSource = windowContainsPoint(srcWin, point)
+    if (!inSource) {
+      hasLeftSource = true
     }
 
-    // 光标未曾离开源窗口且仍在源窗口内 → 源窗口优先，不检测目标（防止重叠误触发）
-    if (inSource && !hasLeftSource) {
-      if (srcWin) srcWin.setAlwaysOnTop(false)
+    let activeTargetWin: BrowserWindow | undefined
+    if (hasLeftSource) {
       if (lastDragOverWinId) {
-        let prevWin: BrowserWindow | undefined
         for (const w of windows) {
-          if (w.id === lastDragOverWinId && !w.isDestroyed()) { prevWin = w; break }
+          if (w.id === lastDragOverWinId && windowContainsPoint(w, point)) {
+            activeTargetWin = w
+            break
+          }
         }
-        if (prevWin) prevWin.webContents.send('tab-drag-leave')
-        lastDragOverWinId = null
       }
+
+      if (!activeTargetWin) {
+        for (const win of windows) {
+          if (win.id === dragSourceWinId || win.isDestroyed() || win.isMinimized() || !win.isVisible()) continue
+          if (windowContainsPoint(win, point)) {
+            activeTargetWin = win
+            break
+          }
+        }
+      }
+    }
+
+    if (activeTargetWin) {
+      if (srcWin) {
+        setSourceDragSuppressed(srcWin, true)
+        setSourceNewWindowHintVisible(srcWin, false)
+        srcWin.setAlwaysOnTop(false)
+      }
+      if (lastDragOverWinId && lastDragOverWinId !== activeTargetWin.id) {
+        clearActiveTargetHover()
+      }
+      if (activeTargetWin.id !== lastRaisedWinId) {
+        activeTargetWin.moveTop()
+        lastRaisedWinId = activeTargetWin.id
+      }
+      activeTargetWin.webContents.send('tab-drag-over', point.x)
+      lastDragOverWinId = activeTargetWin.id
       return
     }
 
-    if (!inSource) hasLeftSource = true
+    clearActiveTargetHover()
 
-    // 光标曾离开过源窗口 → 检查目标窗口（目标优先，解决重叠区域）
-    let foundTarget = false
-    for (const win of windows) {
-      if (win.id === dragSourceWinId || win.isDestroyed() || win.isMinimized() || !win.isVisible()) continue
-      const bounds = win.getBounds()
-      if (point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
-          point.y >= bounds.y && point.y <= bounds.y + bounds.height) {
-        if (srcWin) srcWin.setAlwaysOnTop(false)
-        if (win.id !== lastRaisedWinId) {
-          win.moveTop()
-          lastRaisedWinId = win.id
-        }
-        // 向目标窗口发送光标屏幕坐标，用于显示插入指示器
-        win.webContents.send('tab-drag-over', point.x)
-        if (lastDragOverWinId && lastDragOverWinId !== win.id) {
-          let prevWin: BrowserWindow | undefined
-          for (const w of windows) {
-            if (w.id === lastDragOverWinId && !w.isDestroyed()) { prevWin = w; break }
-          }
-          if (prevWin) prevWin.webContents.send('tab-drag-leave')
-        }
-        lastDragOverWinId = win.id
-        foundTarget = true
-        break
-      }
+    if (srcWin) {
+      setSourceDragSuppressed(srcWin, false)
+      setSourceNewWindowHintVisible(srcWin, false)
     }
 
-    if (!foundTarget) {
-      // 清除目标窗口指示器
-      if (lastDragOverWinId) {
-        let prevWin: BrowserWindow | undefined
-        for (const w of windows) {
-          if (w.id === lastDragOverWinId && !w.isDestroyed()) { prevWin = w; break }
-        }
-        if (prevWin) prevWin.webContents.send('tab-drag-leave')
-        lastDragOverWinId = null
-      }
-
-      if (inSource) {
-        // 回到源窗口（无目标重叠）→ 置顶源窗口，重置离开标记
-        if (srcWin) {
-          srcWin.setAlwaysOnTop(false)
+    if (inSource) {
+      if (srcWin) {
+        srcWin.setAlwaysOnTop(false)
+        if (hasLeftSource) {
           srcWin.moveTop()
         }
-        hasLeftSource = false
-      } else {
-        // 不在任何 SSHTools 窗口上，alwaysOnTop 防止第三方抢焦点
-        if (srcWin) srcWin.setAlwaysOnTop(true, 'floating')
       }
-      lastRaisedWinId = null
+      lastRaisedWinId = srcWin?.id ?? null
+      hasLeftSource = false
+      return
     }
+
+    if (srcWin) {
+      setSourceNewWindowHintVisible(srcWin, true)
+      srcWin.setAlwaysOnTop(true, 'floating')
+    }
+    lastRaisedWinId = null
   }, 150)
 })
 

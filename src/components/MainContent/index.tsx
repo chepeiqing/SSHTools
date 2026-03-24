@@ -8,8 +8,6 @@ import {
   LinkOutlined,
   CloseOutlined,
   FolderOutlined,
-  RightOutlined,
-  LeftOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   HomeOutlined,
@@ -278,7 +276,7 @@ const MainContent: React.FC = () => {
             id: newTab.connectionId,
             serverId: newTab.serverId,
             serverName: newTab.serverName || '',
-            status: 'connected',
+            status: newTab.status || 'disconnected',
             sftpReady: false,
           })
         }
@@ -388,7 +386,7 @@ const MainContent: React.FC = () => {
           id: newTab.connectionId,
           serverId: newTab.serverId,
           serverName: newTab.serverName || '',
-          status: 'connected',
+          status: newTab.status || 'disconnected',
           sftpReady: false,
         })
       }
@@ -407,6 +405,8 @@ const MainContent: React.FC = () => {
     captureTarget: HTMLElement | null
     pointerId: number
   }>({ dragKey: null, startX: 0, startY: 0, isDragging: false, captureTarget: null, pointerId: -1 })
+  const sourceDragSuppressedRef = useRef(false)
+  const sourceNewWindowHintVisibleRef = useRef(false)
   const tabKeysStr = tabs.map(t => t.key).join(',')
 
   useEffect(() => {
@@ -421,6 +421,24 @@ const MainContent: React.FC = () => {
       navList.querySelectorAll('.tab-drop-left, .tab-drop-right').forEach(el => {
         el.classList.remove('tab-drop-left', 'tab-drop-right')
       })
+    }
+
+    const setNewWindowHintVisible = (visible: boolean) => {
+      sourceNewWindowHintVisibleRef.current = visible
+      const hint = document.querySelector('.tab-tearoff-hint')
+      if (visible) {
+        if (!hint) {
+          const newHint = document.createElement('div')
+          newHint.className = 'tab-tearoff-hint'
+          newHint.textContent = '松开以在新窗口中打开'
+          document.body.appendChild(newHint)
+          requestAnimationFrame(() => newHint.classList.add('visible'))
+        } else {
+          requestAnimationFrame(() => hint.classList.add('visible'))
+        }
+      } else if (hint) {
+        hint.classList.remove('visible')
+      }
     }
 
     const findDropTarget = (x: number): { node: HTMLElement; pos: 'left' | 'right' } | null => {
@@ -452,7 +470,9 @@ const MainContent: React.FC = () => {
       const state = dragStateRef.current
       clearIndicators()
       document.body.classList.remove('tab-dragging-active')
+      setNewWindowHintVisible(false)
       document.querySelector('.tab-tearoff-hint')?.remove()
+      sourceDragSuppressedRef.current = false
       if (state.captureTarget && state.pointerId >= 0) {
         try { state.captureTarget.releasePointerCapture(state.pointerId) } catch { /* already released */ }
       }
@@ -460,6 +480,15 @@ const MainContent: React.FC = () => {
       state.dragKey = null
       state.captureTarget = null
       state.pointerId = -1
+    }
+
+    const cancelDrag = () => {
+      const state = dragStateRef.current
+      if (!state.dragKey) return
+      if (state.isDragging) {
+        window.electronAPI.tabDragHoverEnd()
+      }
+      cleanup()
     }
 
     const onPointerDown = (e: PointerEvent) => {
@@ -479,6 +508,7 @@ const MainContent: React.FC = () => {
       dragStateRef.current.isDragging = false
       dragStateRef.current.captureTarget = tab
       dragStateRef.current.pointerId = e.pointerId
+      sourceDragSuppressedRef.current = false
     }
 
     const startDrag = (_e: PointerEvent) => {
@@ -504,14 +534,16 @@ const MainContent: React.FC = () => {
         startDrag(e)
       }
 
-      const isInWindow = e.clientX > 0 && e.clientY > 0 &&
-        e.clientX < window.innerWidth && e.clientY < window.innerHeight
+      const isInWindow = e.clientX >= 0 && e.clientY >= 0 &&
+        e.clientX <= window.innerWidth && e.clientY <= window.innerHeight
 
       const navRect = nav.getBoundingClientRect()
       const isOverNav = e.clientX >= navRect.left && e.clientX <= navRect.right &&
         e.clientY >= navRect.top && e.clientY <= navRect.bottom
 
-      if (isOverNav) {
+      if (sourceDragSuppressedRef.current) {
+        clearIndicators()
+      } else if (isOverNav) {
         const target = findDropTarget(e.clientX)
         if (target) {
           const key = target.node.getAttribute('data-node-key')
@@ -528,17 +560,8 @@ const MainContent: React.FC = () => {
         clearIndicators()
       }
 
-      const hint = document.querySelector('.tab-tearoff-hint')
-      if (!isInWindow) {
-        if (!hint) {
-          const newHint = document.createElement('div')
-          newHint.className = 'tab-tearoff-hint'
-          newHint.textContent = '松开以在新窗口中打开'
-          document.body.appendChild(newHint)
-          requestAnimationFrame(() => newHint.classList.add('visible'))
-        }
-      } else if (hint) {
-        hint.classList.remove('visible')
+      if (!sourceNewWindowHintVisibleRef.current && isInWindow) {
+        setNewWindowHintVisible(false)
       }
     }
 
@@ -588,6 +611,20 @@ const MainContent: React.FC = () => {
       cleanup()
     }
 
+    const onPointerCancel = () => {
+      cancelDrag()
+    }
+
+    const onWindowBlur = () => {
+      cancelDrag()
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        cancelDrag()
+      }
+    }
+
     // pointerdown 绑定在各个标签上（pointer capture 确保窗口外也能收到事件）
     const tabNodes = getTabNodes()
     tabNodes.forEach(node => {
@@ -599,6 +636,22 @@ const MainContent: React.FC = () => {
     // pointermove / pointerup 绑定在 document 上（通过 pointer capture 冒泡）
     document.addEventListener('pointermove', onPointerMove)
     document.addEventListener('pointerup', onPointerUp)
+    document.addEventListener('pointercancel', onPointerCancel)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('blur', onWindowBlur)
+    const cleanupSuspend = window.electronAPI.onTabDragSourceSuspend(() => {
+      sourceDragSuppressedRef.current = true
+      clearIndicators()
+    })
+    const cleanupResume = window.electronAPI.onTabDragSourceResume(() => {
+      sourceDragSuppressedRef.current = false
+    })
+    const cleanupShowHint = window.electronAPI.onTabDragSourceShowNewWindowHint(() => {
+      setNewWindowHintVisible(true)
+    })
+    const cleanupHideHint = window.electronAPI.onTabDragSourceHideNewWindowHint(() => {
+      setNewWindowHintVisible(false)
+    })
 
     return () => {
       tabNodes.forEach(node => {
@@ -606,7 +659,14 @@ const MainContent: React.FC = () => {
       })
       document.removeEventListener('pointermove', onPointerMove)
       document.removeEventListener('pointerup', onPointerUp)
-      cleanup()
+      document.removeEventListener('pointercancel', onPointerCancel)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('blur', onWindowBlur)
+      cleanupSuspend()
+      cleanupResume()
+      cleanupShowHint()
+      cleanupHideHint()
+      cancelDrag()
       dragStateRef.current.dragKey = null
     }
   }, [tabKeysStr])
@@ -942,6 +1002,7 @@ const MainContent: React.FC = () => {
   const reconnectTab = async (tabKey: string) => {
     const tab = tabs.find(t => t.key === tabKey)
     if (!tab || !tab.serverId) return
+    if (tab.status === 'connecting') return
 
     const server = servers.find(s => s.id === tab.serverId)
     if (!server) {
@@ -1632,9 +1693,11 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
   onOpenFile,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
+  const resizeHandleRef = useRef<HTMLDivElement>(null)
   const [isResizing, setIsResizing] = useState(false)
   const startYRef = useRef(0)
   const startHeightRef = useRef(0)
+  const pointerIdRef = useRef<number | null>(null)
 
   // SFTP 打开时自动设置为容器高度的一半
   useEffect(() => {
@@ -1644,15 +1707,22 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
     }
   }, [tab.sftpVisible, tab.sftpHeight, onUpdateSFTPHeight])
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const stopResizing = useCallback(() => {
+    setIsResizing(false)
+    pointerIdRef.current = null
+  }, [])
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pointerIdRef.current = e.pointerId
     setIsResizing(true)
     startYRef.current = e.clientY
     startHeightRef.current = tab.sftpHeight
   }, [tab.sftpHeight])
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (!isResizing) return
 
       const diff = startYRef.current - e.clientY
@@ -1660,20 +1730,28 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
       onUpdateSFTPHeight(newHeight)
     }
 
-    const handleMouseUp = () => {
-      setIsResizing(false)
+    const handlePointerUp = () => {
+      stopResizing()
+    }
+
+    const handleLostPointerCapture = () => {
+      stopResizing()
     }
 
     if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
+      window.addEventListener('pointermove', handlePointerMove)
+      window.addEventListener('pointerup', handlePointerUp)
+      window.addEventListener('blur', handlePointerUp)
+      resizeHandleRef.current?.addEventListener('lostpointercapture', handleLostPointerCapture)
     }
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('blur', handlePointerUp)
+      resizeHandleRef.current?.removeEventListener('lostpointercapture', handleLostPointerCapture)
     }
-  }, [isResizing, onUpdateSFTPHeight])
+  }, [isResizing, onUpdateSFTPHeight, stopResizing])
 
   const sftpReady = tab.sftpVisible && tab.sftpHeight > 0
 
@@ -1688,6 +1766,7 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
         <TerminalPanel
           connectionId={tab.connectionId}
           serverId={tab.serverId}
+          connectionStatus={tab.status}
           isActive={isActive}
           sftpVisible={tab.sftpVisible}
           onToggleSFTP={onToggleSFTP}
@@ -1701,8 +1780,9 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
         <>
           {/* 拖拽分割线 */}
           <div
+            ref={resizeHandleRef}
             className={`resize-divider ${isResizing ? 'resizing' : ''}`}
-            onMouseDown={handleMouseDown}
+            onPointerDown={handlePointerDown}
           />
 
           {/* SFTP 内容 */}
@@ -1732,9 +1812,19 @@ const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthC
   const [isResizing, setIsResizing] = useState(false)
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
+  const resizeHandleRef = useRef<HTMLDivElement>(null)
+  const pointerIdRef = useRef<number | null>(null)
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const stopResizing = useCallback(() => {
+    setIsResizing(false)
+    pointerIdRef.current = null
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
+  }, [])
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    pointerIdRef.current = e.pointerId
     setIsResizing(true)
     startXRef.current = e.clientX
     startWidthRef.current = width
@@ -1743,7 +1833,7 @@ const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthC
   useEffect(() => {
     if (!isResizing) return
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       // 左侧面板：向右拖 → 宽度增大；右侧面板：向左拖 → 宽度增大
       const diff = position === 'left'
         ? e.clientX - startXRef.current
@@ -1752,33 +1842,41 @@ const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthC
       onWidthChange(newWidth)
     }
 
-    const handleMouseUp = () => {
-      setIsResizing(false)
-      // 拖拽完成后通知终端 refit
-      setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
+    const handlePointerUp = () => {
+      stopResizing()
     }
 
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+    const handleLostPointerCapture = () => {
+      stopResizing()
     }
-  }, [isResizing, onWidthChange])
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('blur', handlePointerUp)
+    resizeHandleRef.current?.addEventListener('lostpointercapture', handleLostPointerCapture)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('blur', handlePointerUp)
+      resizeHandleRef.current?.removeEventListener('lostpointercapture', handleLostPointerCapture)
+    }
+  }, [isResizing, onWidthChange, position, stopResizing])
 
   return (
     <div className={`detail-panel-container visible ${position}`} style={{ width }}>
       {position === 'right' && (
         <div
+          ref={resizeHandleRef}
           className={`detail-panel-drag-handle ${isResizing ? 'resizing' : ''}`}
-          onMouseDown={handleMouseDown}
+          onPointerDown={handlePointerDown}
         />
       )}
       {children}
       {position === 'left' && (
         <div
+          ref={resizeHandleRef}
           className={`detail-panel-drag-handle ${isResizing ? 'resizing' : ''}`}
-          onMouseDown={handleMouseDown}
+          onPointerDown={handlePointerDown}
         />
       )}
     </div>

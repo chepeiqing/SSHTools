@@ -38,6 +38,7 @@ import './index.css'
 interface TerminalPanelProps {
   connectionId?: string
   serverId?: string
+  connectionStatus?: 'connecting' | 'connected' | 'disconnected' | 'error'
   isActive?: boolean
   sftpVisible?: boolean
   onToggleSFTP?: (path?: string) => void
@@ -52,6 +53,7 @@ interface TerminalPanelProps {
 const TerminalPanel: React.FC<TerminalPanelProps> = ({
   connectionId,
   serverId,
+  connectionStatus,
   isActive = true,
   sftpVisible = false,
   onToggleSFTP,
@@ -59,6 +61,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   serverConfig,
 }) => {
   const terminalRef = useRef<HTMLDivElement>(null)
+  const disconnectedOverlayRef = useRef<HTMLDivElement>(null)
   const terminalInstance = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const searchAddonRef = useRef<SearchAddon | null>(null)
@@ -75,21 +78,29 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const connectionIdRef = useRef(connectionId)
   const serverIdRef = useRef(serverId)
   const isConnectedRef = useRef(false)
+  const reconnectableRef = useRef(false)
+  const reconnectPendingRef = useRef(false)
   const onReconnectRef = useRef(onReconnect)
   const wordWrapRef = useRef(wordWrap)
   const addCommandRef = useRef<(serverId: string, command: string) => void>(() => {})
 
   // 获取连接状态
   const connection = connectionId ? getConnection(connectionId) : undefined
-  const isConnected = connection?.status === 'connected'
-  const isDisconnected = connection?.status === 'disconnected' || connection?.status === 'error'
+  const effectiveStatus = connection?.status ?? connectionStatus ?? 'disconnected'
+  const isConnected = effectiveStatus === 'connected'
+  const isDisconnected = effectiveStatus === 'disconnected' || effectiveStatus === 'error'
 
   // 直接在渲染时更新 ref，确保闭包中始终拿到最新值
   connectionIdRef.current = connectionId
   serverIdRef.current = serverId
   isConnectedRef.current = isConnected || false
+  reconnectableRef.current = isDisconnected
   onReconnectRef.current = onReconnect
   wordWrapRef.current = wordWrap
+
+  if (!isDisconnected) {
+    reconnectPendingRef.current = false
+  }
 
   // 获取 SSH 当前工作目录（通过交互式 shell，获取真实 CWD）
   const getCurrentPath = useCallback(async (): Promise<string> => {
@@ -147,8 +158,8 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
       const text = await navigator.clipboard.readText()
       if (text && connectionIdRef.current && isConnectedRef.current) {
         window.electronAPI.sshWrite(connectionIdRef.current, text)
-      } else if (text && terminalInstance.current) {
-        terminalInstance.current.write(text)
+      } else if (text) {
+        message.info('当前连接已断开')
       }
     } catch {
       message.error('粘贴失败，请检查剪贴板权限')
@@ -181,6 +192,8 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           // 粘贴到终端
           if (connectionIdRef.current && isConnectedRef.current) {
             window.electronAPI.sshWrite(connectionIdRef.current, selection)
+          } else {
+            message.info('当前连接已断开')
           }
           terminalInstance.current.clearSelection()
         } catch {
@@ -230,6 +243,15 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       // 只在 keydown 时处理
       if (e.type !== 'keydown') return true
+
+      if (!isConnectedRef.current) {
+        const isEnter = e.key === 'Enter' || e.key === 'NumpadEnter'
+        if (isEnter && reconnectableRef.current && onReconnectRef.current) {
+          return true
+        }
+        e.preventDefault()
+        return false
+      }
 
       const ctrl = e.ctrlKey || e.metaKey
 
@@ -322,10 +344,10 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         }
       } else if (data === '\r' || data === '\n') {
         // 断开连接后，按回车触发重连
-        if (onReconnectRef.current) {
+        if (!reconnectPendingRef.current && onReconnectRef.current) {
           term.writeln('')
           term.writeln('\x1b[36m── 正在重新连接... ──\x1b[0m')
-          onReconnectRef.current()
+          triggerReconnect()
         }
       }
     })
@@ -512,6 +534,24 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }
   }, [connectionId, isConnected, terminalReady])
 
+  useEffect(() => {
+    const term = terminalInstance.current
+    const container = terminalRef.current
+    if (!term || !container) return
+
+    container.classList.toggle('terminal-container-disconnected', isDisconnected)
+
+    if (isDisconnected) {
+      term.blur()
+      disconnectedOverlayRef.current?.focus()
+      return
+    }
+
+    if (isActive) {
+      term.focus()
+    }
+  }, [isActive, isDisconnected])
+
   // 主题/配色变化时更新终端
   useEffect(() => {
     if (terminalInstance.current) {
@@ -646,6 +686,15 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }
   }
 
+  const triggerReconnect = useCallback(() => {
+    if (!onReconnectRef.current || !reconnectableRef.current || reconnectPendingRef.current) {
+      return
+    }
+
+    reconnectPendingRef.current = true
+    onReconnectRef.current()
+  }, [])
+
   // 复制选中内容（带提示）
   const copySelection = async () => {
     if (terminalInstance.current) {
@@ -729,6 +778,13 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   // 构建右键菜单
   const hasSelection = terminalInstance.current?.hasSelection() || false
+
+  const handleDisconnectedOverlayKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if ((e.key === 'Enter' || e.key === 'NumpadEnter') && onReconnect) {
+      e.preventDefault()
+      triggerReconnect()
+    }
+  }
 
   const contextMenuItems: MenuProps['items'] = [
     {
@@ -827,7 +883,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         label: '重新连接',
         icon: <LinkOutlined />,
         onClick: () => {
-          onReconnect()
+          triggerReconnect()
           setContextMenuPos(null)
         },
       },
@@ -886,7 +942,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
                     <Button
                       type="link"
                       size="small"
-                      onClick={onReconnect}
+                      onClick={triggerReconnect}
                       style={{ padding: '0 4px', height: 'auto' }}
                     >
                       重连
@@ -1035,6 +1091,20 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
       {/* 终端容器 */}
       <div ref={terminalRef} className="terminal-container" />
+
+      {isDisconnected && onReconnect && (
+        <div
+          ref={disconnectedOverlayRef}
+          className="terminal-disconnected-overlay"
+          tabIndex={0}
+          onKeyDown={handleDisconnectedOverlayKeyDown}
+          onClick={() => disconnectedOverlayRef.current?.focus()}
+        >
+          <DisconnectOutlined className="terminal-disconnected-icon" />
+          <div className="terminal-disconnected-title">连接已断开</div>
+          <div className="terminal-disconnected-hint">按回车重新连接</div>
+        </div>
+      )}
 
       {/* 右键菜单 */}
       {contextMenuPos && (

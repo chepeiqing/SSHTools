@@ -94,17 +94,11 @@ export async function connectServer(
       })
       return { success: true, connectionId }
     } else {
-      useConnectionStore.getState().updateConnection(connectionId, {
-        status: 'error',
-        error: result.error,
-      })
+      useConnectionStore.getState().removeConnection(connectionId)
       return { success: false, error: result.error }
     }
   } catch (error: unknown) {
-    useConnectionStore.getState().updateConnection(connectionId, {
-      status: 'error',
-      error: error instanceof Error ? error.message : String(error),
-    })
+    useConnectionStore.getState().removeConnection(connectionId)
     return { success: false, error: error instanceof Error ? error.message : String(error) }
   }
 }

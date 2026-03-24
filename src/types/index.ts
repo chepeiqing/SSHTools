@@ -142,6 +142,10 @@ export interface ElectronAPI {
   onTabReceived: (callback: (tabData: Record<string, unknown>) => void) => () => void
   onTabDragOver: (callback: (screenX: number) => void) => () => void
   onTabDragLeave: (callback: () => void) => () => void
+  onTabDragSourceSuspend: (callback: () => void) => () => void
+  onTabDragSourceResume: (callback: () => void) => () => void
+  onTabDragSourceShowNewWindowHint: (callback: () => void) => () => void
+  onTabDragSourceHideNewWindowHint: (callback: () => void) => () => void
 }
 
 declare global {

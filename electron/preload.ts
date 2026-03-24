@@ -242,4 +242,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('tab-drag-leave', handler)
     return () => ipcRenderer.removeListener('tab-drag-leave', handler)
   },
+
+  onTabDragSourceSuspend: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('tab-drag-source-suspend', handler)
+    return () => ipcRenderer.removeListener('tab-drag-source-suspend', handler)
+  },
+
+  onTabDragSourceResume: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('tab-drag-source-resume', handler)
+    return () => ipcRenderer.removeListener('tab-drag-source-resume', handler)
+  },
+
+  onTabDragSourceShowNewWindowHint: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('tab-drag-source-show-new-window-hint', handler)
+    return () => ipcRenderer.removeListener('tab-drag-source-show-new-window-hint', handler)
+  },
+
+  onTabDragSourceHideNewWindowHint: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('tab-drag-source-hide-new-window-hint', handler)
+    return () => ipcRenderer.removeListener('tab-drag-source-hide-new-window-hint', handler)
+  },
 })

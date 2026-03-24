@@ -326,6 +326,8 @@ const TitleBar: React.FC<TitleBarProps> = ({ onConnect }) => {
         </div>
       </div>
 
+      <div className="title-bar-spacer drag-region" />
+
       <div className="title-bar-right no-drag">
         <Dropdown menu={{ items: settingMenuItems }} trigger={['click']} placement="bottomRight">
           <Button type="text" icon={<SettingOutlined />} className="title-bar-btn" />

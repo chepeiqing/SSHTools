@@ -259,6 +259,11 @@ class SSHManager {
 
   // 断开连接
   disconnect(id: string) {
+    const target = this.connectionTargets.get(id)
+    if (target && !target.isDestroyed()) {
+      target.send('ssh-disconnected', { id })
+    }
+
     // 先关闭 shell stream
     const stream = this.shellStreams.get(id)
     if (stream) {

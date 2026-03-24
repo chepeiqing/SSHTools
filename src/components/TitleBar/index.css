@@ -19,6 +19,13 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.title-bar-spacer {
+  flex: 1 1 140px;
+  min-width: 48px;
 }
 
 .app-logo-img {
@@ -39,7 +46,8 @@
 /* Search Box */
 .title-search {
   max-width: 600px;
-  width: 100%;
+  width: min(100%, 600px);
+  min-width: 180px;
   margin-left: 24px;
 }
 
@@ -174,6 +182,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .window-controls {
