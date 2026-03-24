@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Input, Button, Tooltip } from 'antd'
+import { Input, Button } from 'antd'
 import {
   SearchOutlined,
   PlusOutlined,
   FolderAddOutlined,
 } from '@ant-design/icons'
 import ServerTree from '../ServerTree'
+import Tooltip from '../DelayedTooltip'
 import './index.css'
 
 interface ServerListPanelProps {

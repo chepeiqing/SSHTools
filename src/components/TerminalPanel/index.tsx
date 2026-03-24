@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
-import { Button, Tooltip, Dropdown, Input, App, Space } from 'antd'
+import { Button, Dropdown, Input, App, Space } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   SearchOutlined,
@@ -32,6 +32,7 @@ import { useTerminalThemeStore, getTerminalColorScheme } from '../../stores/term
 import { useTerminalHistoryStore } from '../../stores/terminalHistoryStore'
 import TerminalHistoryPanel from './TerminalHistoryPanel'
 import QuickCommandsPanel from './QuickCommandsPanel'
+import Tooltip from '../DelayedTooltip'
 import '@xterm/xterm/css/xterm.css'
 import './index.css'
 
@@ -991,7 +992,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         </div>
 
         <div className="toolbar-right">
-          <Tooltip title="搜索 (Ctrl+F)">
+          <Tooltip title="搜索 (Ctrl+F)" placement="bottom">
             <Button
               icon={<SearchOutlined />}
               size="small"
@@ -1006,7 +1007,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             />
           </Tooltip>
 
-          <Tooltip title="复制选中内容">
+          <Tooltip title="复制选中内容" placement="bottom">
             <Button
               icon={<CopyOutlined />}
               size="small"
@@ -1014,7 +1015,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             />
           </Tooltip>
 
-          <Tooltip title="导出日志">
+          <Tooltip title="导出日志" placement="bottom">
             <Button
               icon={<ExportOutlined />}
               size="small"
@@ -1023,7 +1024,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           </Tooltip>
 
           {connection && isConnected && serverId && (
-            <Tooltip title="历史命令">
+            <Tooltip title="历史命令" placement="bottom">
               <Button
                 icon={<HistoryOutlined />}
                 size="small"
@@ -1034,7 +1035,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           )}
 
           {connection && serverId && (
-            <Tooltip title="快捷命令">
+            <Tooltip title="快捷命令" placement="bottom">
               <Button
                 icon={<ThunderboltOutlined />}
                 size="small"
@@ -1045,7 +1046,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           )}
 
           {connection && onToggleSFTP && (
-            <Tooltip title={sftpVisible ? 'SFTP 定位到当前目录' : '打开 SFTP'}>
+            <Tooltip title={sftpVisible ? 'SFTP 定位到当前目录' : '打开 SFTP'} placement="bottomRight">
               <Button
                 icon={<FolderOutlined />}
                 size="small"

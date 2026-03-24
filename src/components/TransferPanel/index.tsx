@@ -1,4 +1,4 @@
-import { Button, Tooltip } from 'antd'
+import { Button } from 'antd'
 import {
   UploadOutlined,
   DownloadOutlined,
@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons'
 import { useTransferStore } from '../../stores/transferStore'
 import type { TransferTask } from '../../stores/transferStore'
+import Tooltip from '../DelayedTooltip'
 import './index.css'
 
 const TransferPanel: React.FC = () => {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Input, Table, Button, App, Empty, Tooltip, Dropdown, Modal } from 'antd'
+import { Input, Table, Button, App, Empty, Dropdown, Modal } from 'antd'
 import type { TableColumnsType, MenuProps } from 'antd'
 import {
   FolderOutlined,
@@ -26,6 +26,7 @@ import type { FileInfo } from '../../types'
 import { Resizable } from 'react-resizable'
 import './index.css'
 import { isBinaryFile } from '../EditorPanel/languages'
+import Tooltip from '../DelayedTooltip'
 
 interface SFTPPanelProps {
   connectionId?: string
@@ -1112,12 +1113,14 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
               disabled={remotePath === '/'}
             />
           </Tooltip>
-          <Button
-            icon={<ReloadOutlined />}
-            size="small"
-            onClick={refreshRemote}
-            loading={remoteLoading}
-          />
+          <Tooltip title="刷新目录">
+            <Button
+              icon={<ReloadOutlined />}
+              size="small"
+              onClick={refreshRemote}
+              loading={remoteLoading}
+            />
+          </Tooltip>
         </div>
         <div className="sftp-toolbar-right">
           <Tooltip title={showHidden ? '隐藏隐藏文件' : '显示隐藏文件'}>
@@ -1128,39 +1131,44 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
               type={showHidden ? 'primary' : 'default'}
             />
           </Tooltip>
-          <Button
-            icon={<UploadOutlined />}
-            size="small"
-            onClick={handleSelectUpload}
-            title="上传文件"
-          />
-          <Button
-            icon={<DownloadOutlined />}
-            size="small"
-            onClick={handleDownload}
-            disabled={selectedRemoteKeys.length === 0}
-            title="下载选中文件"
-          />
-          <Button
-            icon={<FolderAddOutlined />}
-            size="small"
-            onClick={handleCreateFolder}
-            title="新建文件夹"
-          />
-          <Button
-            icon={<FileAddOutlined />}
-            size="small"
-            onClick={handleCreateFile}
-            title="新建文件"
-          />
-          <Button
-            icon={<DeleteOutlined />}
-            size="small"
-            danger
-            onClick={() => handleDelete()}
-            disabled={selectedRemoteKeys.length === 0}
-            title="删除"
-          />
+          <Tooltip title="上传文件">
+            <Button
+              icon={<UploadOutlined />}
+              size="small"
+              onClick={handleSelectUpload}
+            />
+          </Tooltip>
+          <Tooltip title="下载选中文件">
+            <Button
+              icon={<DownloadOutlined />}
+              size="small"
+              onClick={handleDownload}
+              disabled={selectedRemoteKeys.length === 0}
+            />
+          </Tooltip>
+          <Tooltip title="新建文件夹">
+            <Button
+              icon={<FolderAddOutlined />}
+              size="small"
+              onClick={handleCreateFolder}
+            />
+          </Tooltip>
+          <Tooltip title="新建文件">
+            <Button
+              icon={<FileAddOutlined />}
+              size="small"
+              onClick={handleCreateFile}
+            />
+          </Tooltip>
+          <Tooltip title="删除">
+            <Button
+              icon={<DeleteOutlined />}
+              size="small"
+              danger
+              onClick={() => handleDelete()}
+              disabled={selectedRemoteKeys.length === 0}
+            />
+          </Tooltip>
         </div>
       </div>
 

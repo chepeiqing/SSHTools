@@ -378,9 +378,15 @@ html, body, #root {
 }
 
 /* Tooltip */
-.dark .ant-tooltip-inner {
+.app-delayed-tooltip .ant-tooltip-inner {
   background: var(--bg-tertiary);
   color: var(--text-color);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+}
+
+.app-delayed-tooltip .ant-tooltip-arrow::before {
+  background: var(--bg-tertiary);
 }
 
 /* Message */

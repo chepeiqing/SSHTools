@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Input, Tag, Tooltip, Collapse, Empty, App } from 'antd'
+import { Input, Tag, Collapse, Empty, App } from 'antd'
 import {
   SearchOutlined,
   CopyFilled,
@@ -7,6 +7,7 @@ import {
   CodeOutlined,
 } from '@ant-design/icons'
 import type { CollapseProps } from 'antd'
+import Tooltip from '../DelayedTooltip'
 import './index.css'
 
 // 命令分类
