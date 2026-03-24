@@ -42,6 +42,16 @@ export interface SystemStats {
   topProcesses: { pid: string; user: string; cpu: string; mem: string; command: string; fullCommand: string }[]
 }
 
+// 活跃传输（用于取消）
+interface ActiveTransfer {
+  aborted: boolean
+  readStream?: fs.ReadStream
+  writeStream?: fs.WriteStream | SFTPWrapper
+  tempPath?: string  // 临时文件路径（上传时使用）
+  sftp?: SFTPWrapper // SFTP 连接（用于删除临时文件）
+  connectionId?: string
+}
+
 // SSH 连接管理器
 class SSHManager {
   private connections: Map<string, Client> = new Map()
@@ -49,6 +59,8 @@ class SSHManager {
   private sftpConnections: Map<string, SFTPWrapper> = new Map()
   // 每个连接对应的渲染进程（多窗口支持）
   private connectionTargets: Map<string, WebContents> = new Map()
+  // 活跃传输（taskId -> ActiveTransfer）
+  private activeTransfers: Map<string, ActiveTransfer> = new Map()
   // 所有已注册的窗口（用于广播）
   private windowRegistry: Set<WebContents> = new Set()
   // 临时屏蔽 shell 输出转发到终端（获取 CWD 时使用）
@@ -664,14 +676,18 @@ class SSHManager {
     })
   }
 
-  // 下载文件（支持断点续传）
+  // 下载文件（支持断点续传和取消，使用临时文件避免损坏）
   async downloadFile(
     id: string,
     remotePath: string,
     localPath: string,
     onProgress?: (transferred: number, total: number) => void,
-    resume?: boolean
+    resume?: boolean,
+    taskId?: string
   ): Promise<{ success: boolean; error?: string }> {
+    // 生成临时文件路径：在原文件名后加 .part
+    const tempPath = localPath + '.part'
+
     try {
       const pathError = this.validateRemotePath(remotePath)
       if (pathError) return { success: false, error: pathError }
@@ -693,66 +709,118 @@ class SSHManager {
 
         if (resume) {
           try {
-            const localStat = await fsStat(localPath)
+            const localStat = await fsStat(tempPath)
             if (localStat.size > 0 && localStat.size < totalSize) {
               startOffset = localStat.size
             }
           } catch {
-            // 本地文件不存在，从头开始
+            // 临时文件不存在，从头开始
           }
         }
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : '获取文件信息失败' }
       }
 
-      // 无需续传，使用 fastGet（多线程并行，速度更快）
-      if (startOffset === 0) {
-        return new Promise((resolve) => {
-          sftp.fastGet(remotePath, localPath, {
-            step: (transferred, _chunk, total) => {
-              if (onProgress) onProgress(transferred, total)
-            },
-          }, (err) => {
-            if (err) {
-              resolve({ success: false, error: err.message })
-              return
-            }
-            resolve({ success: true })
-          })
-        })
-      }
-
-      // 断点续传模式：使用流式传输从偏移处继续
+      // 使用流式传输到临时文件（支持取消）
       return new Promise((resolve) => {
+        // 注册活跃传输
+        const transfer: ActiveTransfer = { aborted: false, tempPath }
+        if (taskId) this.activeTransfers.set(taskId, transfer)
+
+        const cleanup = () => {
+          if (taskId) this.activeTransfers.delete(taskId)
+        }
+
+        // 删除临时文件（取消时调用）
+        const deleteTempFile = () => {
+          try {
+            fs.unlinkSync(tempPath)
+          } catch { /* ignore */ }
+        }
+
+        // 重命名临时文件为最终文件
+        const renameTempFile = (): boolean => {
+          try {
+            // 先删除目标文件（如果存在）
+            try { fs.unlinkSync(localPath) } catch { /* ignore */ }
+            fs.renameSync(tempPath, localPath)
+            return true
+          } catch {
+            return false
+          }
+        }
+
         try {
           const readStream = sftp.createReadStream(remotePath, { start: startOffset })
-          const writeStream = fs.createWriteStream(localPath, { flags: 'a' })
+          const writeStream = fs.createWriteStream(tempPath, { flags: startOffset > 0 ? 'a' : 'w' })
+
+          // 存储流引用以便取消
+          transfer.readStream = readStream as unknown as fs.ReadStream
+          transfer.writeStream = writeStream
 
           let transferred = startOffset
           if (onProgress) onProgress(transferred, totalSize)
 
           readStream.on('data', (chunk: Buffer) => {
+            // 检查是否已取消
+            if (transfer.aborted) {
+              readStream.destroy()
+              writeStream.destroy()
+              return
+            }
             transferred += chunk.length
             if (onProgress) onProgress(transferred, totalSize)
           })
 
           readStream.on('error', (err) => {
+            cleanup()
             writeStream.destroy()
-            resolve({ success: false, error: err.message })
+            if (transfer.aborted) {
+              deleteTempFile()
+              resolve({ success: false, error: '已取消' })
+            } else {
+              resolve({ success: false, error: err.message })
+            }
           })
 
           writeStream.on('error', (err) => {
+            cleanup()
             readStream.destroy()
-            resolve({ success: false, error: err.message })
+            if (transfer.aborted) {
+              deleteTempFile()
+              resolve({ success: false, error: '已取消' })
+            } else {
+              resolve({ success: false, error: err.message })
+            }
           })
 
           writeStream.on('finish', () => {
-            resolve({ success: true })
+            cleanup()
+            if (transfer.aborted) {
+              deleteTempFile()
+              resolve({ success: false, error: '已取消' })
+            } else {
+              // 下载完成，重命名临时文件为最终文件名
+              const renamed = renameTempFile()
+              if (renamed) {
+                resolve({ success: true })
+              } else {
+                resolve({ success: false, error: '重命名文件失败' })
+              }
+            }
+          })
+
+          readStream.on('close', () => {
+            // 流关闭时结束写入
+            if (!transfer.aborted) {
+              writeStream.end()
+            }
           })
 
           readStream.pipe(writeStream)
         } catch (err: unknown) {
-          resolve({ success: false, error: err instanceof Error ? err.message : '续传失败' })
+          cleanup()
+          resolve({ success: false, error: err instanceof Error ? err.message : '下载失败' })
         }
       })
     } catch (err: unknown) {
@@ -760,14 +828,18 @@ class SSHManager {
     }
   }
 
-  // 上传文件（支持断点续传）
+  // 上传文件（支持断点续传和取消，使用临时文件避免损坏）
   async uploadFile(
     id: string,
     localPath: string,
     remotePath: string,
     onProgress?: (transferred: number, total: number) => void,
-    resume?: boolean
+    resume?: boolean,
+    taskId?: string
   ): Promise<{ success: boolean; error?: string }> {
+    // 生成临时文件路径：在原文件名后加 .part
+    const tempPath = remotePath + '.part'
+
     try {
       const pathError = this.validateRemotePath(remotePath)
       if (pathError) return { success: false, error: pathError }
@@ -786,74 +858,144 @@ class SSHManager {
         totalSize = localStat.size
 
         if (resume) {
+          // 检查临时文件是否存在（断点续传）
           try {
-            const remoteStat = await new Promise<{ size: number }>((res, rej) => {
-              sftp.stat(remotePath, (err, stats) => err ? rej(err) : res(stats as unknown as { size: number }))
+            const tempStat = await new Promise<{ size: number }>((res, rej) => {
+              sftp.stat(tempPath, (err, stats) => err ? rej(err) : res(stats as unknown as { size: number }))
             })
-            if (remoteStat.size > 0 && remoteStat.size < totalSize) {
-              startOffset = remoteStat.size
+            if (tempStat.size > 0 && tempStat.size < totalSize) {
+              startOffset = tempStat.size
             }
           } catch {
-            // 远程文件不存在，从头开始
+            // 临时文件不存在，从头开始
           }
         }
       } catch (err: unknown) {
         return { success: false, error: err instanceof Error ? err.message : '获取文件信息失败' }
       }
 
-      // 无需续传，使用 fastPut
-      if (startOffset === 0) {
-        return new Promise((resolve) => {
-          sftp.fastPut(localPath, remotePath, {
-            step: (transferred, _chunk, total) => {
-              if (onProgress) onProgress(transferred, total)
-            },
-          }, (err) => {
-            if (err) {
-              resolve({ success: false, error: err.message })
-              return
-            }
-            resolve({ success: true })
-          })
-        })
-      }
-
-      // 断点续传模式
+      // 使用流式传输到临时文件（支持取消）
       return new Promise((resolve) => {
+        // 注册活跃传输，包含临时文件路径用于取消时删除
+        const transfer: ActiveTransfer = { aborted: false, tempPath, sftp, connectionId: id }
+        if (taskId) this.activeTransfers.set(taskId, transfer)
+
+        const cleanup = () => {
+          if (taskId) this.activeTransfers.delete(taskId)
+        }
+
+        // 删除临时文件（取消时调用）
+        const deleteTempFile = async () => {
+          try {
+            await new Promise<void>((res) => {
+              sftp.unlink(tempPath, () => res())
+            })
+          } catch { /* ignore */ }
+        }
+
+        // 重命名临时文件为最终文件
+        const renameTempFile = async (): Promise<boolean> => {
+          return new Promise((res) => {
+            // 先删除目标文件（如果存在）
+            sftp.unlink(remotePath, () => {
+              // 重命名临时文件
+              sftp.rename(tempPath, remotePath, (err) => {
+                res(!err)
+              })
+            })
+          })
+        }
+
         try {
           const readStream = fs.createReadStream(localPath, { start: startOffset })
-          const writeStream = sftp.createWriteStream(remotePath, { flags: 'a' })
+          const writeStream = sftp.createWriteStream(tempPath, { flags: startOffset > 0 ? 'a' : 'w' })
+
+          // 存储流引用以便取消
+          transfer.readStream = readStream
+          transfer.writeStream = writeStream
 
           let transferred = startOffset
           if (onProgress) onProgress(transferred, totalSize)
 
           readStream.on('data', (chunk: Buffer) => {
+            // 检查是否已取消
+            if (transfer.aborted) {
+              readStream.destroy()
+              writeStream.destroy()
+              return
+            }
             transferred += chunk.length
             if (onProgress) onProgress(transferred, totalSize)
           })
 
           readStream.on('error', (err) => {
+            cleanup()
             writeStream.destroy()
-            resolve({ success: false, error: err.message })
+            if (transfer.aborted) {
+              deleteTempFile()
+              resolve({ success: false, error: '已取消' })
+            } else {
+              resolve({ success: false, error: err.message })
+            }
           })
 
           writeStream.on('error', (err: Error) => {
+            cleanup()
             readStream.destroy()
-            resolve({ success: false, error: err.message })
+            if (transfer.aborted) {
+              deleteTempFile()
+              resolve({ success: false, error: '已取消' })
+            } else {
+              resolve({ success: false, error: err.message })
+            }
           })
 
-          writeStream.on('finish', () => {
-            resolve({ success: true })
+          writeStream.on('close', async () => {
+            cleanup()
+            if (transfer.aborted) {
+              await deleteTempFile()
+              resolve({ success: false, error: '已取消' })
+            } else {
+              // 上传完成，重命名临时文件为最终文件名
+              const renamed = await renameTempFile()
+              if (renamed) {
+                resolve({ success: true })
+              } else {
+                resolve({ success: false, error: '重命名文件失败' })
+              }
+            }
+          })
+
+          readStream.on('end', () => {
+            // 本地文件读取完毕，SFTP writeStream 会自动关闭
           })
 
           readStream.pipe(writeStream)
         } catch (err: unknown) {
-          resolve({ success: false, error: err instanceof Error ? err.message : '续传失败' })
+          cleanup()
+          resolve({ success: false, error: err instanceof Error ? err.message : '上传失败' })
         }
       })
     } catch (err: unknown) {
       return { success: false, error: err instanceof Error ? err.message : '上传操作异常' }
     }
+  }
+
+  // 取消传输
+  abortTransfer(taskId: string): boolean {
+    const transfer = this.activeTransfers.get(taskId)
+    if (transfer) {
+      transfer.aborted = true
+      // 销毁流
+      if (transfer.readStream) {
+        try { transfer.readStream.destroy() } catch { /* ignore */ }
+      }
+      if (transfer.writeStream) {
+        try { (transfer.writeStream as fs.WriteStream).destroy() } catch { /* ignore */ }
+      }
+      return true
+    }
+    return false
   }
 
   // 获取文件信息

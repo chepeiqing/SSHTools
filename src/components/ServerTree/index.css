@@ -1,28 +1,28 @@
 /* Tree Styling */
 .session-tree {
   background: transparent !important;
-  margin-top: 8px;
 }
 
+/* ==================== 分组标题 ==================== */
 .tree-group-title {
   display: flex !important;
   align-items: center !important;
   width: 100%;
-  padding: 8px 0;
+  padding: 10px 0 6px;
 }
 
 .group-icon {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  margin-right: 12px;
+  font-size: 14px;
+  margin-right: 8px;
   flex-shrink: 0;
 }
 
 .group-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-color);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .group-count-badge {
@@ -31,95 +31,141 @@
   font-size: 11px;
 }
 
+/* ==================== 服务器表格（detail 模式） ==================== */
+.server-table-row {
+  display: grid;
+  grid-template-columns: 12px 160px 1fr 140px 80px;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+  transition: background 0.12s;
+  font-size: 13px;
+  min-height: 32px;
+}
+
+.server-table-row:hover {
+  background: var(--hover-bg, rgba(255, 255, 255, 0.04));
+}
+
+/* 选中态（通过 Tree 选中） */
+.session-tree .ant-tree-node-selected .server-table-row {
+  background: var(--primary-soft, rgba(22, 119, 255, 0.08)) !important;
+}
+
+.session-tree .ant-tree-node-selected .server-table-name {
+  color: var(--primary-color) !important;
+}
+
+.server-table-name {
+  font-weight: 600;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-table-host {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: 'Fira Code', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-table-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-table-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ==================== 服务器行（侧边栏简洁模式） ==================== */
 .tree-server-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 4px 16px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
-  margin: 6px 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-md, 8px);
   box-sizing: border-box;
-  transition: all 0.2s ease;
+  transition: background 0.15s;
   position: relative;
+  cursor: pointer;
 }
 
 .tree-server-card:hover {
-  background: var(--active-bg);
-  border-color: var(--primary-color);
+  background: var(--hover-bg, rgba(255, 255, 255, 0.04));
 }
 
 .server-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: 100%;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .server-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .server-host {
   font-size: 11px;
   color: var(--text-secondary);
   font-family: 'Fira Code', monospace;
-}
-
-/* Detail mode (HomePage) */
-.tree-server-card.detail {
-  padding: 10px 16px;
-}
-
-.tree-server-card.detail .server-info {
-  gap: 6px;
-}
-
-.server-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.server-meta-row .server-host {
-  flex-shrink: 0;
-}
-
-.meta-sep {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--text-tertiary);
-  flex-shrink: 0;
-  margin: 0 8px;
-}
-
-.server-desc {
-  font-size: 12px;
-  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
 
-.server-last-connect {
-  font-size: 11px;
-  color: var(--text-tertiary);
+/* ==================== 状态圆点 ==================== */
+.server-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   flex-shrink: 0;
-  white-space: nowrap;
+  background: var(--text-tertiary);
+  opacity: 0.5;
 }
 
-/* Ant Tree Overrides (CRITICAL) */
+.server-status-dot.connected {
+  background: var(--success-color);
+  box-shadow: 0 0 6px var(--success-color);
+  opacity: 1;
+}
+
+.server-status-dot.connecting {
+  background: var(--warning-color);
+  box-shadow: 0 0 6px var(--warning-color);
+  opacity: 1;
+}
+
+.server-status-dot.disconnected {
+  background: var(--text-tertiary);
+  box-shadow: none;
+  opacity: 0.4;
+}
+
+/* ==================== Ant Tree 覆盖 ==================== */
 .session-tree .ant-tree-treenode {
   width: 100% !important;
-  padding: 0 0 0 0 !important;
+  padding: 0 !important;
   display: flex !important;
   align-items: stretch !important;
 }
@@ -135,45 +181,16 @@
   background: transparent !important;
 }
 
-/* Selected State */
+/* 选中态 */
 .session-tree .ant-tree-node-selected .tree-server-card {
-  border: 1px solid var(--primary-color) !important;
-  background: var(--active-bg) !important;
-  box-shadow: 0 0 20px var(--primary-soft);
+  background: var(--primary-soft, rgba(22, 119, 255, 0.08)) !important;
 }
 
 .session-tree .ant-tree-node-selected .server-name {
   color: var(--primary-color) !important;
 }
 
-/* Status dots */
-.server-status-dot {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--text-tertiary);
-}
-
-.server-status-dot.connected {
-  background: var(--success-color);
-  box-shadow: 0 0 6px var(--success-color);
-}
-
-.server-status-dot.connecting {
-  background: var(--warning-color);
-  box-shadow: 0 0 6px var(--warning-color);
-}
-
-.server-status-dot.disconnected {
-  background: var(--text-tertiary);
-  box-shadow: none;
-}
-
-/* Hide switcher space for leaf nodes (servers) */
+/* 隐藏叶子节点的 switcher 占位 */
 .session-tree .ant-tree-switcher.ant-tree-switcher-noop {
   width: 0 !important;
   min-width: 0 !important;
@@ -181,23 +198,25 @@
   margin: 0 !important;
 }
 
-/* Switcher / Indent Line */
+/* Switcher 箭头 */
 .session-tree .ant-tree-switcher {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   width: 24px !important;
+  min-height: 32px !important;
   height: auto !important;
-  align-self: stretch !important;
+  align-self: center !important;
   background: none !important;
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
   line-height: 1 !important;
+  margin-right: 2px !important;
 }
 
 .session-tree .ant-tree-switcher:before {
-  top: 8px !important;
+  display: none !important;
 }
 
 .session-tree .ant-tree-switcher:hover {
@@ -211,18 +230,44 @@
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
+  font-size: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
+/* 拖拽手柄（draggable 模式下的图标） */
+.session-tree .ant-tree-draggable-icon {
+  display: none !important;
+}
+
+/* 缩进连线 */
 .session-tree .ant-tree-indent-unit {
   position: relative;
-  width: 24px !important;
+  width: 20px !important;
 }
 
 .session-tree .ant-tree-indent-unit::before {
   content: '';
   position: absolute;
-  left: 12px;
+  left: 10px;
   height: 100%;
   width: 1px;
   background: var(--border-color);
+  opacity: 0.5;
+}
+
+/* ==================== 拖拽样式 ==================== */
+.session-tree .ant-tree-treenode.dragging {
+  opacity: 0.4;
+}
+
+.session-tree .ant-tree-treenode.drop-target > .ant-tree-node-content-wrapper {
+  background: var(--primary-soft) !important;
+  border-radius: var(--radius-md, 6px);
+}
+
+.session-tree .ant-tree-drop-indicator {
+  background: var(--primary-color) !important;
+  height: 2px !important;
 }

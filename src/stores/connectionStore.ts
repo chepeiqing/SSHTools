@@ -13,38 +13,18 @@ export interface Connection {
   currentPath?: string
 }
 
-export interface TransferTask {
-  id: string
-  connectionId: string
-  type: 'upload' | 'download'
-  localPath: string
-  remotePath: string
-  transferred: number
-  total: number
-  status: 'pending' | 'transferring' | 'completed' | 'error'
-  error?: string
-}
-
 interface ConnectionState {
   connections: Map<string, Connection>
-  transferTasks: TransferTask[]
-  
+
   // 连接操作
   setConnection: (id: string, connection: Connection) => void
   updateConnection: (id: string, data: Partial<Connection>) => void
   removeConnection: (id: string) => void
   getConnection: (id: string) => Connection | undefined
-  
-  // 传输任务
-  addTransferTask: (task: TransferTask) => void
-  updateTransferTask: (id: string, data: Partial<TransferTask>) => void
-  removeTransferTask: (id: string) => void
-  getTransferTasks: (connectionId: string) => TransferTask[]
 }
 
 export const useConnectionStore = create<ConnectionState>((set, get) => ({
   connections: new Map(),
-  transferTasks: [],
 
   setConnection: (id, connection) => {
     set((state) => {
@@ -75,30 +55,6 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
   getConnection: (id) => {
     return get().connections.get(id)
-  },
-
-  addTransferTask: (task) => {
-    set((state) => ({
-      transferTasks: [...state.transferTasks, task],
-    }))
-  },
-
-  updateTransferTask: (id, data) => {
-    set((state) => ({
-      transferTasks: state.transferTasks.map((task) =>
-        task.id === id ? { ...task, ...data } : task
-      ),
-    }))
-  },
-
-  removeTransferTask: (id) => {
-    set((state) => ({
-      transferTasks: state.transferTasks.filter((task) => task.id !== id),
-    }))
-  },
-
-  getTransferTasks: (connectionId) => {
-    return get().transferTasks.filter((task) => task.connectionId === connectionId)
   },
 }))
 

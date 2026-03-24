@@ -123,12 +123,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('sftp-rename', id, oldPath, newPath),
 
   // 下载文件
-  sftpDownload: (id: string, remotePath: string, localPath: string, resume?: boolean) =>
-    ipcRenderer.invoke('sftp-download', id, remotePath, localPath, resume),
+  sftpDownload: (id: string, remotePath: string, localPath: string, resume?: boolean, taskId?: string) =>
+    ipcRenderer.invoke('sftp-download', id, remotePath, localPath, resume, taskId),
 
   // 上传文件
-  sftpUpload: (id: string, localPath: string, remotePath: string, resume?: boolean) =>
-    ipcRenderer.invoke('sftp-upload', id, localPath, remotePath, resume),
+  sftpUpload: (id: string, localPath: string, remotePath: string, resume?: boolean, taskId?: string) =>
+    ipcRenderer.invoke('sftp-upload', id, localPath, remotePath, resume, taskId),
+
+  // 取消传输
+  sftpAbort: (taskId: string) =>
+    ipcRenderer.invoke('sftp-abort', taskId),
 
   // 获取工作目录
   sftpGetcwd: (id: string) => ipcRenderer.invoke('sftp-getcwd', id),
@@ -163,6 +167,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 传输进度监听
   onSFTPTransferProgress: (callback: (data: {
+    taskId?: string
     id: string
     type: 'upload' | 'download'
     localPath: string

@@ -1,10 +1,8 @@
-import { Modal, Form, Input, Select, InputNumber, TreeSelect, Button, App, Checkbox } from 'antd'
+import { Modal, Form, Input, InputNumber, TreeSelect, Button, App, Checkbox } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import { RightOutlined, FolderOpenOutlined, CheckCircleOutlined, LoadingOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { FolderOpenOutlined, CheckCircleOutlined, LoadingOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { useServerStore, type ServerConfig } from '../../stores/serverStore'
 import './NewSessionModal.css'
-
-const { Option } = Select
 
 type SessionFormValues = Omit<ServerConfig, 'id' | 'lastConnectedAt' | 'tags'> & {
   privateKeyPath?: string
@@ -31,7 +29,6 @@ const NewSessionModal: React.FC<NewSessionModalProps> = ({
   const authType = Form.useWatch('authType', form)
   const { groups } = useServerStore()
   const { message } = App.useApp()
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
   const [keyFilePath, setKeyFilePath] = useState<string>('')
 
@@ -55,33 +52,22 @@ const NewSessionModal: React.FC<NewSessionModalProps> = ({
   useEffect(() => {
     if (visible) {
       setTestStatus('idle')
-      setShowAdvanced(false)
       if (editData) {
         form.setFieldsValue(editData)
         setKeyFilePath(editData.privateKeyPath || '')
-        if (editData.terminal?.fontSize || editData.terminal?.fontFamily || editData.terminal?.theme) {
-          setShowAdvanced(true)
-        }
       } else if (initialData) {
         // 复制模式：以新建模式打开，但回显已有数据
         form.resetFields()
         form.setFieldsValue(initialData)
         setKeyFilePath(initialData.privateKeyPath || '')
-        if (initialData.terminal?.fontSize || initialData.terminal?.fontFamily || initialData.terminal?.theme) {
-          setShowAdvanced(true)
-        }
       } else {
         form.resetFields()
         setKeyFilePath('')
         form.setFieldsValue({
           port: 22,
           authType: 'password',
-          rememberPassword: true,
+          rememberPassword: false,
           groupId: defaultGroupId || undefined,
-          terminal: {
-            fontSize: 14,
-            fontFamily: 'Consolas, Monaco, monospace',
-          },
         })
       }
     }
@@ -278,33 +264,6 @@ const NewSessionModal: React.FC<NewSessionModalProps> = ({
               </Form.Item>
             </div>
 
-            <div
-              className={'nsm-advanced-toggle ' + (showAdvanced ? 'expanded' : '')}
-              onClick={() => setShowAdvanced(!showAdvanced)}
-            >
-              <RightOutlined />
-              <span>终端设置</span>
-            </div>
-
-            <div className={'nsm-advanced-content ' + (showAdvanced ? 'visible' : '')}>
-              <div className="nsm-row">
-                <Form.Item name={['terminal', 'fontSize']} label="字号">
-                  <InputNumber min={10} max={32} style={{ width: '100%' }} />
-                </Form.Item>
-                <Form.Item name={['terminal', 'fontFamily']} label="字体" style={{ flex: 2 }}>
-                  <Input placeholder="Consolas, Monaco, monospace" />
-                </Form.Item>
-              </div>
-              <Form.Item name={['terminal', 'theme']} label="终端主题">
-                <Select allowClear placeholder="选择主题">
-                  <Option value="default">默认</Option>
-                  <Option value="dracula">Dracula</Option>
-                  <Option value="monokai">Monokai</Option>
-                  <Option value="solarized-dark">Solarized Dark</Option>
-                  <Option value="solarized-light">Solarized Light</Option>
-                </Select>
-              </Form.Item>
-            </div>
           </Form>
         </div>
 

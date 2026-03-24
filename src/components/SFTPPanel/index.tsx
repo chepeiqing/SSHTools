@@ -10,38 +10,22 @@ import {
   FolderAddOutlined,
   DeleteOutlined,
   HomeOutlined,
-  LoadingOutlined,
   DragOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  ClockCircleOutlined,
   EditOutlined,
   FileAddOutlined,
   LockOutlined,
   CopyOutlined,
   ArrowLeftOutlined,
   SearchOutlined,
-  SwapOutlined,
 } from '@ant-design/icons'
 import { useConnectionStore, initSFTP, listFiles } from '../../stores/connectionStore'
+import { useTransferStore } from '../../stores/transferStore'
 import type { FileInfo } from '../../types'
 import { Resizable } from 'react-resizable'
 import './index.css'
 import { isBinaryFile } from '../EditorPanel/languages'
-
-interface TransferTask {
-  id: string
-  type: 'upload' | 'download'
-  fileName: string
-  localPath: string
-  remotePath: string
-  status: 'pending' | 'transferring' | 'completed' | 'failed'
-  progress: number
-  error?: string
-  resume?: boolean
-}
 
 interface SFTPPanelProps {
   connectionId?: string
@@ -113,14 +97,11 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
   const [newFolderDialogVisible, setNewFolderDialogVisible] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
 
-  // 传输队列
-  const [transferQueue, setTransferQueue] = useState<TransferTask[]>([])
-  const [queueExpanded, setQueueExpanded] = useState(true)
-  const [queueHeight, setQueueHeight] = useState(200)
-  const [queueVisible, setQueueVisible] = useState(true)
-  const processingRef = useRef(false)
-  const notifiedRef = useRef(new Set<string>())
-  const completedUploadCountRef = useRef(0)
+  // 传输 store
+  const addTransferTasks = useTransferStore(s => s.addTasks)
+  const transferTasks = useTransferStore(s => s.tasks)
+
+  // 组件卸载时标记
   const unmountedRef = useRef(false)
 
   // 组件卸载时标记
@@ -244,89 +225,19 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
     }
     prevNavSeqRef.current = navSeq
   }, [navSeq, initialPath, sftpReady, connectionId, loadRemoteFiles])
+
+  // 上传完成后自动刷新目录 — 订阅全局 store
+  const completedUploadCountRef = useRef(0)
   useEffect(() => {
-    if (!connectionId) return
-
-    const unsubscribe = window.electronAPI.onSFTPTransferProgress((data) => {
-      if (data.id === connectionId) {
-        const percent = data.total > 0 ? Math.round((data.transferred / data.total) * 100) : 0
-        setTransferQueue(prev => prev.map(t =>
-          t.status === 'transferring' ? { ...t, progress: percent } : t
-        ))
-      }
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [connectionId])
-
-  // 队列处理
-  useEffect(() => {
-    if (processingRef.current || !connectionId || !sftpReady) return
-
-    const nextTask = transferQueue.find(t => t.status === 'pending')
-    if (!nextTask) return
-
-    processingRef.current = true
-    const { id: taskId, type: taskType, localPath, remotePath: taskRemotePath, resume: taskResume } = nextTask
-
-    setTransferQueue(prev => prev.map(t =>
-      t.id === taskId ? { ...t, status: 'transferring' as const } : t
-    ))
-
-    const run = async () => {
-      try {
-        let result: { success: boolean; error?: string }
-        if (taskType === 'upload') {
-          result = await window.electronAPI.sftpUpload(connectionId!, localPath, taskRemotePath, taskResume)
-        } else {
-          result = await window.electronAPI.sftpDownload(connectionId!, taskRemotePath, localPath, taskResume)
-        }
-
-        if (!unmountedRef.current) {
-          setTransferQueue(prev => prev.map(t =>
-            t.id === taskId
-              ? { ...t, status: result.success ? 'completed' as const : 'failed' as const, progress: result.success ? 100 : t.progress, error: result.error }
-              : t
-          ))
-        }
-      } catch (err: unknown) {
-        if (!unmountedRef.current) {
-          const errorMsg = err instanceof Error ? err.message : '传输异常'
-          setTransferQueue(prev => prev.map(t =>
-            t.id === taskId
-              ? { ...t, status: 'failed' as const, error: errorMsg }
-              : t
-          ))
-        }
-      } finally {
-        processingRef.current = false
-      }
-    }
-
-    run()
-  }, [transferQueue, connectionId, sftpReady])
-
-  // 完成通知 & 上传后自动刷新目录
-  useEffect(() => {
-    transferQueue.forEach(task => {
-      if (notifiedRef.current.has(task.id)) return
-      if (task.status === 'completed') {
-        notifiedRef.current.add(task.id)
-        message.success(`${task.type === 'upload' ? '上传' : '下载'}成功: ${task.fileName}`)
-      } else if (task.status === 'failed') {
-        notifiedRef.current.add(task.id)
-        message.error(`${task.type === 'upload' ? '上传' : '下载'}失败: ${task.fileName}`)
-      }
-    })
-
-    const completedUploads = transferQueue.filter(t => t.status === 'completed' && t.type === 'upload').length
-    if (completedUploads > completedUploadCountRef.current && sftpReady) {
+    if (!connectionId || !sftpReady) return
+    const completedUploads = transferTasks.filter(
+      t => t.connectionId === connectionId && t.type === 'upload' && t.status === 'completed'
+    ).length
+    if (completedUploads > completedUploadCountRef.current) {
       loadRemoteFiles(remotePath)
     }
     completedUploadCountRef.current = completedUploads
-  }, [transferQueue, message, sftpReady, remotePath, loadRemoteFiles])
+  }, [transferTasks, connectionId, sftpReady, remotePath, loadRemoteFiles])
 
   // 刷新远程目录
   const refreshRemote = () => {
@@ -381,15 +292,15 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       .map(t => t.fileName)
 
     const doAdd = () => {
-      setTransferQueue(prev => [...prev, ...tasks.map(t => ({
+      addTransferTasks(tasks.map(t => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        connectionId: connectionId!,
+        serverName: connection?.serverName || '',
         type: 'upload' as const,
         fileName: t.fileName,
         localPath: t.filePath,
         remotePath: t.remotePath,
-        status: 'pending' as const,
-        progress: 0,
-      }))])
+      })))
     }
 
     if (conflicts.length > 0) {
@@ -407,28 +318,6 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
     } else {
       doAdd()
     }
-  }
-
-  // 取消等待中的任务
-  const cancelTask = (taskId: string) => {
-    setTransferQueue(prev => prev.filter(t => !(t.id === taskId && t.status === 'pending')))
-  }
-
-  // 重试失败的任务
-  const retryTask = (taskId: string) => {
-    notifiedRef.current.delete(taskId)
-    setTransferQueue(prev => prev.map(t =>
-      t.id === taskId && t.status === 'failed'
-        ? { ...t, status: 'pending' as const, progress: 0, error: undefined, resume: true }
-        : t
-    ))
-  }
-
-  // 清除已完成的任务
-  const clearCompleted = () => {
-    const completed = transferQueue.filter(t => t.status === 'completed')
-    completed.forEach(t => notifiedRef.current.delete(t.id))
-    setTransferQueue(prev => prev.filter(t => t.status !== 'completed'))
   }
 
   // 选择文件上传
@@ -466,16 +355,15 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       if (result.canceled || result.filePaths.length === 0) return
 
       const destDir = result.filePaths[0]
-      const newTasks: TransferTask[] = selectedFiles.map(file => ({
+      addTransferTasks(selectedFiles.map(file => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`,
+        connectionId: connectionId!,
+        serverName: connection?.serverName || '',
         type: 'download' as const,
         fileName: file.name,
         localPath: `${destDir}/${file.name}`,
         remotePath: joinRemotePath(remotePath, file.name),
-        status: 'pending' as const,
-        progress: 0,
-      }))
-      setTransferQueue(prev => [...prev, ...newTasks])
+      })))
     }
   }
 
@@ -489,14 +377,14 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
     const result = await window.electronAPI.dialogSaveFile(file.name)
     if (result.canceled || !result.filePath) return
 
-    setTransferQueue(prev => [...prev, {
+    addTransferTasks([{
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      connectionId: connectionId!,
+      serverName: connection?.serverName || '',
       type: 'download' as const,
       fileName: file.name,
       localPath: result.filePath!,
       remotePath: joinRemotePath(remotePath, file.name),
-      status: 'pending' as const,
-      progress: 0,
     }])
   }
 
@@ -831,12 +719,23 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
     }
 
     if (contextMenuFile.type === 'file') {
+      // 判断是否有多个文件被选中且右键文件在选中范围内
+      const selectedFileItems = remoteFiles.filter(
+        f => selectedRemoteKeys.includes(f.name) && f.type === 'file' && f.name !== '..'
+      )
+      const isInSelection = selectedRemoteKeys.includes(contextMenuFile.name)
+      const multiSelected = isInSelection && selectedFileItems.length > 1
+
       items.push({
         key: 'download',
-        label: '下载',
+        label: multiSelected ? `下载选中 (${selectedFileItems.length})` : '下载',
         icon: <DownloadOutlined />,
         onClick: () => {
-          handleDownloadSingle(contextMenuFile.name)
+          if (multiSelected) {
+            handleDownload()
+          } else {
+            handleDownloadSingle(contextMenuFile.name)
+          }
           setContextMenuPos(null)
         },
       })
@@ -1253,15 +1152,6 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
             disabled={selectedRemoteKeys.length === 0}
             title="删除"
           />
-          <Tooltip title={queueVisible ? '隐藏传输队列' : '显示传输队列'}>
-            <Button
-              size="small"
-              icon={<SwapOutlined />}
-              onClick={() => setQueueVisible(!queueVisible)}
-              type={queueVisible && transferQueue.length > 0 ? 'primary' : 'default'}
-              disabled={transferQueue.length === 0}
-            />
-          </Tooltip>
         </div>
       </div>
 
@@ -1317,94 +1207,6 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       {quickSearch && (
         <div className="quick-search-hint">
           <SearchOutlined /> {quickSearch}
-        </div>
-      )}
-
-      {/* 传输队列 */}
-      {transferQueue.length > 0 && queueVisible && (
-        <div className="transfer-queue" style={{ maxHeight: queueHeight }}>
-          <div
-            className="transfer-queue-resize"
-            onMouseDown={(e) => {
-              e.preventDefault()
-              const startY = e.clientY
-              const startHeight = queueHeight
-              const onMove = (me: MouseEvent) => {
-                const diff = startY - me.clientY
-                setQueueHeight(Math.max(60, startHeight + diff))
-              }
-              const onUp = () => {
-                document.removeEventListener('mousemove', onMove)
-                document.removeEventListener('mouseup', onUp)
-              }
-              document.addEventListener('mousemove', onMove)
-              document.addEventListener('mouseup', onUp)
-            }}
-          />
-          <div className="transfer-queue-header" onClick={() => setQueueExpanded(!queueExpanded)}>
-            <span className="queue-title">
-              传输队列
-              <span className="queue-counts">
-                {transferQueue.filter(t => t.status === 'completed').length}/{transferQueue.length}
-              </span>
-            </span>
-            <span className="queue-actions">
-              {transferQueue.some(t => t.status === 'completed') && (
-                <Button
-                  size="small"
-                  type="text"
-                  onClick={(e) => { e.stopPropagation(); clearCompleted() }}
-                >
-                  清除已完成
-                </Button>
-              )}
-              <span className="queue-toggle">{queueExpanded ? '▲' : '▼'}</span>
-            </span>
-          </div>
-          {queueExpanded && (
-            <div className="transfer-queue-list">
-              {transferQueue.map(task => (
-                <div key={task.id} className={`transfer-queue-item ${task.status}`}>
-                  <span className="task-type-icon">
-                    {task.type === 'upload' ? <UploadOutlined /> : <DownloadOutlined />}
-                  </span>
-                  <span className="task-name" title={task.fileName}>{task.fileName}</span>
-                  <span className="task-status-label">
-                    {task.status === 'pending' && <span className="status-text pending">等待中</span>}
-                    {task.status === 'transferring' && <span className="status-text transferring">{task.progress}%</span>}
-                    {task.status === 'completed' && <span className="status-text completed">已完成</span>}
-                    {task.status === 'failed' && (
-                      <Tooltip title={task.error}>
-                        <span className="status-text failed">失败</span>
-                      </Tooltip>
-                    )}
-                  </span>
-                  <span className="task-progress">
-                    {task.status === 'transferring' && <LoadingOutlined style={{ color: 'var(--primary-color)' }} />}
-                    {task.status === 'pending' && <ClockCircleOutlined style={{ color: '#8c8c8c' }} />}
-                    {task.status === 'completed' && <CheckCircleOutlined style={{ color: '#52c41a' }} />}
-                    {task.status === 'failed' && (
-                      <Tooltip title={task.error}>
-                        <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
-                      </Tooltip>
-                    )}
-                  </span>
-                  <span className="task-actions">
-                    {task.status === 'pending' && (
-                      <Button size="small" type="text" danger onClick={() => cancelTask(task.id)} style={{ padding: '0 4px', height: 20, fontSize: 12 }}>
-                        取消
-                      </Button>
-                    )}
-                    {task.status === 'failed' && (
-                      <Button size="small" type="text" onClick={() => retryTask(task.id)} style={{ padding: '0 4px', height: 20, fontSize: 12 }}>
-                        重试
-                      </Button>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

@@ -248,11 +248,12 @@ ipcMain.handle('sftp-rename', async (_event: IpcMainInvokeEvent, id: string, old
 })
 
 // 下载文件
-ipcMain.handle('sftp-download', async (event: IpcMainInvokeEvent, id: string, remotePath: string, localPath: string, resume?: boolean) => {
+ipcMain.handle('sftp-download', async (event: IpcMainInvokeEvent, id: string, remotePath: string, localPath: string, resume?: boolean, taskId?: string) => {
   const sender = event.sender
   return await sshManager.downloadFile(id, remotePath, localPath, (transferred, total) => {
     if (!sender.isDestroyed()) {
       sender.send('sftp-transfer-progress', {
+        taskId,
         id,
         type: 'download',
         remotePath,
@@ -261,15 +262,16 @@ ipcMain.handle('sftp-download', async (event: IpcMainInvokeEvent, id: string, re
         total,
       })
     }
-  }, resume)
+  }, resume, taskId)
 })
 
 // 上传文件
-ipcMain.handle('sftp-upload', async (event: IpcMainInvokeEvent, id: string, localPath: string, remotePath: string, resume?: boolean) => {
+ipcMain.handle('sftp-upload', async (event: IpcMainInvokeEvent, id: string, localPath: string, remotePath: string, resume?: boolean, taskId?: string) => {
   const sender = event.sender
   return await sshManager.uploadFile(id, localPath, remotePath, (transferred, total) => {
     if (!sender.isDestroyed()) {
       sender.send('sftp-transfer-progress', {
+        taskId,
         id,
         type: 'upload',
         localPath,
@@ -278,7 +280,12 @@ ipcMain.handle('sftp-upload', async (event: IpcMainInvokeEvent, id: string, loca
         total,
       })
     }
-  }, resume)
+  }, resume, taskId)
+})
+
+// 取消传输
+ipcMain.handle('sftp-abort', async (_event: IpcMainInvokeEvent, taskId: string) => {
+  return { success: sshManager.abortTransfer(taskId) }
 })
 
 // 获取工作目录

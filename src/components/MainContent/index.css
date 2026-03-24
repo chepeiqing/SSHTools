@@ -149,6 +149,16 @@ body.tab-dragging-active * {
   background: var(--hover-bg) !important;
 }
 
+.sidebar-toggle-btn.transfer-active {
+  color: var(--primary-color) !important;
+  background: var(--primary-soft) !important;
+}
+
+.sidebar-toggle-btn.transfer-active:hover {
+  color: var(--primary-color) !important;
+  background: var(--primary-soft) !important;
+}
+
 .tabbar-extra {
   display: flex;
   align-items: center;
@@ -249,6 +259,14 @@ body.tab-dragging-active * {
   display: flex;
 }
 
+.detail-panel-container.left {
+  border-right: 1px solid var(--border-color);
+}
+
+.detail-panel-container.right {
+  border-left: 1px solid var(--border-color);
+}
+
 .detail-panel-drag-handle {
   width: 4px;
   height: 100%;
@@ -326,26 +344,6 @@ body.tab-dragging-active * {
   margin: 0;
 }
 
-.home-search {
-  width: 100%;
-  max-width: 720px;
-  margin-bottom: 24px;
-  flex-shrink: 0;
-}
-
-.home-search-input {
-  height: 40px;
-  border-radius: 12px;
-  font-size: 14px;
-  background: var(--bg-secondary);
-  border-color: var(--border-color);
-}
-
-.home-search-input:hover,
-.home-search-input:focus-within {
-  border-color: var(--primary-color);
-}
-
 /* 功能模块网格 */
 .home-modules {
   width: 100%;
@@ -414,28 +412,20 @@ body.tab-dragging-active * {
   color: var(--text-color);
 }
 
-.home-empty {
+/* Transfer badge */
+.transfer-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: #ff4d4f;
+  border-radius: 8px;
   text-align: center;
-  color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 40px 0;
-}
-
-.home-empty p {
-  font-size: 14px;
-  margin: 0;
-}
-
-.home-servers {
-  width: 100%;
-  max-width: 720px;
-  flex: 1;
-}
-
-.home-tree-wrapper {
-  width: 100%;
-  min-height: 100%;
+  pointer-events: none;
 }

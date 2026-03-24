@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import TitleBar from './components/TitleBar'
-import SessionManager, { emitSessionConnect } from './components/SessionManager'
+import { emitSessionConnect } from './components/SessionManager'
 import MainContent from './components/MainContent'
 import SettingsModal from './components/SettingsModal'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -12,7 +12,6 @@ import './styles/global.css'
 const App: React.FC = () => {
   const initTheme = useThemeStore((state) => state.initTheme)
   const actualTheme = useThemeStore((state) => state.actualTheme)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
 
   useEffect(() => {
     initTheme()
@@ -35,11 +34,7 @@ const App: React.FC = () => {
       <div className="app-container">
         <TitleBar onConnect={(serverId) => emitSessionConnect({ serverId })} />
         <div className="app-main">
-          <SessionManager collapsed={sidebarCollapsed} />
-          <MainContent
-            sidebarCollapsed={sidebarCollapsed}
-            onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-          />
+          <MainContent />
         </div>
         <SettingsModal />
       </div>

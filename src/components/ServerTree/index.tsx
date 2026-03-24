@@ -7,6 +7,7 @@ import {
   DeleteOutlined,
   ApiOutlined,
   CopyOutlined,
+  FolderOutlined,
 } from '@ant-design/icons'
 import type { MenuProps, TreeDataNode } from 'antd'
 import { useServerStore, type ServerConfig } from '../../stores/serverStore'
@@ -38,7 +39,7 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
   const [newGroupParentId, setNewGroupParentId] = useState<string | undefined>()
   const [blankMenuOpen, setBlankMenuOpen] = useState(false)
 
-  const { servers, groups, addServer, updateServer, deleteServer, addGroup, updateGroup, deleteGroup } = useServerStore()
+  const { servers, groups, addServer, updateServer, deleteServer, addGroup, updateGroup, deleteGroup, moveServerPosition, reorderGroup } = useServerStore()
   const { connections } = useConnectionStore()
   const { message, modal } = App.useApp()
 
@@ -59,12 +60,30 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
   // 监听外部打开新建会话事件
   useEffect(() => {
     if (!listenNewSession) return
-    return onOpenNewSession(() => {
+    const handler = () => {
       setEditingServer(null)
       setDefaultGroupId(undefined)
       setNewSessionVisible(true)
-    })
+    }
+    // 同时监听 CustomEvent 和旧的事件发射器
+    window.addEventListener('server-tree-new-session', handler)
+    const unsubscribe = onOpenNewSession(handler)
+    return () => {
+      window.removeEventListener('server-tree-new-session', handler)
+      unsubscribe()
+    }
   }, [listenNewSession])
+
+  // 监听外部新建分组事件
+  useEffect(() => {
+    const handler = () => {
+      setNewGroupParentId(undefined)
+      setNewGroupName('')
+      setNewGroupVisible(true)
+    }
+    window.addEventListener('server-tree-new-group', handler)
+    return () => window.removeEventListener('server-tree-new-group', handler)
+  }, [])
 
   // 根据 serverId 获取连接状态
   const getServerStatus = (serverId: string): 'connected' | 'connecting' | 'disconnected' => {
@@ -130,51 +149,53 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
 
         const childGroupNodes = buildGroupNodes(group.id, depth + 1)
 
-        const serverNodes: TreeDataNode[] = groupServers.map((server) => {
-          const status = getServerStatus(server.id)
-          const portLabel = server.port !== 22 ? `:${server.port}` : ''
-          return {
-            key: server.id,
-            title: (
-              <div onContextMenu={e => { e.stopPropagation(); setBlankMenuOpen(false) }}>
-                <Dropdown menu={{ items: buildServerMenu(server.id) }} trigger={['contextMenu']}>
-                  {showDetail ? (
-                    <div className="tree-server-card detail">
-                      <div className="server-info">
-                        <div className="server-name">{server.name}</div>
-                        <div className="server-meta-row">
-                          <span className="server-host">{server.username}@{server.host}{portLabel}</span>
-                          {server.description && (
-                            <>
-                              <span className="meta-sep" />
-                              <span className="server-desc">{server.description}</span>
-                            </>
-                          )}
-                          {server.lastConnectedAt && (
-                            <>
-                              <span className="meta-sep" />
-                              <span className="server-last-connect">{formatTime(server.lastConnectedAt)}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
+        // detail 模式：每个服务器独立节点，使用 grid 布局
+        let serverChildren: TreeDataNode[]
+        if (showDetail) {
+          serverChildren = groupServers.map((server) => {
+            const status = getServerStatus(server.id)
+            const portLabel = server.port !== 22 ? `:${server.port}` : ''
+            return {
+              key: server.id,
+              title: (
+                <div onContextMenu={e => { e.stopPropagation(); setBlankMenuOpen(false) }}>
+                  <Dropdown menu={{ items: buildServerMenu(server.id) }} trigger={['contextMenu']}>
+                    <div className="server-table-row">
                       <span className={`server-status-dot ${status}`} />
+                      <span className="server-table-name">{server.name}</span>
+                      <span className="server-table-host">{server.username}@{server.host}{portLabel}</span>
+                      <span className="server-table-desc">{server.description || '-'}</span>
+                      <span className="server-table-time">{server.lastConnectedAt ? formatTime(server.lastConnectedAt) : '-'}</span>
                     </div>
-                  ) : (
+                  </Dropdown>
+                </div>
+              ),
+              isLeaf: true,
+            }
+          })
+        } else {
+          serverChildren = groupServers.map((server) => {
+            const status = getServerStatus(server.id)
+            const portLabel = server.port !== 22 ? `:${server.port}` : ''
+            return {
+              key: server.id,
+              title: (
+                <div onContextMenu={e => { e.stopPropagation(); setBlankMenuOpen(false) }}>
+                  <Dropdown menu={{ items: buildServerMenu(server.id) }} trigger={['contextMenu']}>
                     <div className="tree-server-card">
+                      <span className={`server-status-dot ${status}`} />
                       <div className="server-info">
                         <div className="server-name">{server.name}</div>
                         <div className="server-host">{server.username}@{server.host}{portLabel}</div>
                       </div>
-                      <span className={`server-status-dot ${status}`} />
                     </div>
-                  )}
-                </Dropdown>
-              </div>
-            ),
-            isLeaf: true,
-          }
-        })
+                  </Dropdown>
+                </div>
+              ),
+              isLeaf: true,
+            }
+          })
+        }
 
         const totalCount = countServersInGroup(group.id)
 
@@ -184,7 +205,7 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
             <div onContextMenu={e => { e.stopPropagation(); setBlankMenuOpen(false) }}>
               <Dropdown menu={{ items: buildGroupMenu(group.id) }} trigger={['contextMenu']}>
                 <div className="tree-group-title">
-                  <span className="group-icon" style={{ backgroundColor: groupColor }} />
+                  <FolderOutlined className="group-icon" style={{ color: groupColor }} />
                   <span className="group-name">{group.name}</span>
                   <div className="group-count-badge">
                     <span>{totalCount}</span>
@@ -193,7 +214,7 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
               </Dropdown>
             </div>
           ),
-          children: [...childGroupNodes, ...serverNodes],
+          children: [...childGroupNodes, ...serverChildren],
         }
       })
     }
@@ -230,6 +251,69 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
     const key = node.key as string
     if (!key.startsWith('group-')) {
       onConnect(key)
+    }
+  }
+
+  // 拖拽：允许放置的判断
+  const handleAllowDrop = (info: any) => {
+    const dragKey = String(info.dragNode.key)
+    const dropKey = String(info.dropNode.key)
+    const isDraggingServer = !dragKey.startsWith('group-')
+    const isDropOnGroup = dropKey.startsWith('group-')
+
+    if (isDraggingServer) {
+      // 服务器可以拖到分组上（任何位置都视为移入该分组）或其他服务器旁
+      return true
+    }
+
+    // 分组拖拽
+    if (!isDropOnGroup) return false
+    const dragGroupId = dragKey.replace('group-', '')
+    const dropGroupId = dropKey.replace('group-', '')
+    if (dragGroupId === dropGroupId) return false
+    const descendants = useServerStore.getState().getDescendantGroupIds(dragGroupId)
+    return !descendants.includes(dropGroupId)
+  }
+
+  // 拖拽：放置处理
+  const handleDrop = (info: any) => {
+    const dragKey = String(info.dragNode.key)
+    const dropKey = String(info.node.key)
+    const dropPos = String(info.node.pos).split('-')
+    const relativePos = info.dropPosition - Number(dropPos[dropPos.length - 1])
+
+    const isDraggingServer = !dragKey.startsWith('group-')
+    const isDropOnGroup = dropKey.startsWith('group-')
+
+    if (isDraggingServer) {
+      if (isDropOnGroup) {
+        // 拖到分组上（无论内部还是间隙）→ 移入该分组末尾
+        const targetGroupId = dropKey.replace('group-', '')
+        moveServerPosition(dragKey, targetGroupId)
+      } else if (!isDropOnGroup) {
+        // 放到服务器旁 → 同组或跨组移动并排序
+        const targetServer = servers.find(s => s.id === dropKey)
+        if (!targetServer) return
+        const targetGroupId = targetServer.groupId || 'default'
+        moveServerPosition(dragKey, targetGroupId, dropKey, relativePos <= 0 ? 'before' : 'after')
+      }
+      return
+    }
+
+    // 分组拖拽
+    if (dragKey.startsWith('group-') && isDropOnGroup) {
+      const dragGroupId = dragKey.replace('group-', '')
+      const targetGroupId = dropKey.replace('group-', '')
+
+      if (!info.dropToGap) {
+        // 放到分组上 → 变为子分组
+        const childGroups = groups.filter(g => g.parentId === targetGroupId)
+        updateGroup(dragGroupId, { parentId: targetGroupId, order: childGroups.length })
+      } else {
+        // 放到分组间隙 → 同级重排
+        const targetGroup = groups.find(g => g.id === targetGroupId)
+        reorderGroup(dragGroupId, targetGroup?.parentId, targetGroupId, relativePos <= 0 ? 'before' : 'after')
+      }
     }
   }
 
@@ -380,9 +464,12 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
   return (
     <>
       <Dropdown menu={{ items: blankAreaMenu }} trigger={['contextMenu']} open={blankMenuOpen} onOpenChange={setBlankMenuOpen}>
-        <div className={className} style={{ flex: 1 }}>
+        <div className={className} style={{ flex: 1, minHeight: '100%' }}>
           <Tree
             blockNode
+            draggable={{ icon: false, nodeDraggable: () => true }}
+            allowDrop={handleAllowDrop}
+            onDrop={handleDrop}
             treeData={buildTreeData()}
             onSelect={handleSelect}
             onClick={handleTreeClick}

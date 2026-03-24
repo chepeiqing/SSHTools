@@ -42,6 +42,8 @@ interface ServerState {
   addGroup: (group: Omit<ServerGroup, 'id'>) => void
   updateGroup: (id: string, group: Partial<ServerGroup>) => void
   deleteGroup: (id: string) => void
+  moveServerPosition: (serverId: string, targetGroupId: string, refServerId?: string, position?: 'before' | 'after') => void
+  reorderGroup: (dragGroupId: string, targetParentId: string | undefined, targetGroupId: string, position: 'before' | 'after') => void
   setActiveServer: (id: string | null) => void
   touchServer: (id: string) => void
   getDescendantGroupIds: (id: string) => string[]
@@ -173,6 +175,67 @@ export const useServerStore = create<ServerState>()(
         })
         const newState = get()
         backupDebounced(newState.servers, newState.groups)
+      },
+
+      moveServerPosition: (serverId, targetGroupId, refServerId, position = 'after') => {
+        set((state) => {
+          const serverIdx = state.servers.findIndex(s => s.id === serverId)
+          if (serverIdx === -1) return state
+
+          const movedServer = { ...state.servers[serverIdx], groupId: targetGroupId }
+          const newServers = state.servers.filter(s => s.id !== serverId)
+
+          if (refServerId) {
+            const refIdx = newServers.findIndex(s => s.id === refServerId)
+            if (refIdx >= 0) {
+              newServers.splice(position === 'before' ? refIdx : refIdx + 1, 0, movedServer)
+            } else {
+              newServers.push(movedServer)
+            }
+          } else {
+            let lastIdx = -1
+            newServers.forEach((s, i) => {
+              if ((s.groupId || 'default') === targetGroupId) lastIdx = i
+            })
+            newServers.splice(lastIdx + 1, 0, movedServer)
+          }
+
+          return { servers: newServers }
+        })
+        const state = get()
+        backupDebounced(state.servers, state.groups)
+      },
+
+      reorderGroup: (dragGroupId, targetParentId, targetGroupId, position) => {
+        set((state) => {
+          const dragGroup = state.groups.find(g => g.id === dragGroupId)
+          if (!dragGroup) return state
+
+          const siblings = state.groups
+            .filter(g => (g.parentId || undefined) === (targetParentId || undefined) && g.id !== dragGroupId)
+            .sort((a, b) => a.order - b.order)
+
+          const targetIdx = siblings.findIndex(g => g.id === targetGroupId)
+          const insertAt = position === 'before' ? targetIdx : targetIdx + 1
+          siblings.splice(Math.max(0, insertAt), 0, dragGroup)
+
+          const orderMap = new Map<string, { order: number; parentId?: string }>()
+          siblings.forEach((g, i) => {
+            orderMap.set(g.id, { order: i, parentId: targetParentId })
+          })
+
+          return {
+            groups: state.groups.map(g => {
+              const update = orderMap.get(g.id)
+              if (update) {
+                return { ...g, order: update.order, parentId: update.parentId }
+              }
+              return g
+            })
+          }
+        })
+        const state = get()
+        backupDebounced(state.servers, state.groups)
       },
 
       setActiveServer: (id) => {

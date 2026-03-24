@@ -1,0 +1,106 @@
+.server-list-panel {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--bg-color);
+  overflow: hidden;
+}
+
+/* 顶部固定区域：标题 + 搜索 */
+.server-list-topbar {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 860px;
+  padding: 20px 32px 12px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.server-list-topbar-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-color);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.server-list-search {
+  max-width: 320px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+}
+
+.server-list-search:hover,
+.server-list-search:focus-within {
+  border-color: var(--primary-color);
+}
+
+.server-list-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.server-list-action-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary) !important;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border-color) !important;
+}
+
+.server-list-action-btn:hover {
+  color: var(--primary-color) !important;
+  background: var(--hover-bg) !important;
+  border-color: var(--primary-color) !important;
+}
+
+/* 树容器：填满剩余空间、自己滚动 */
+.server-list-tree-wrapper {
+  flex: 1;
+  width: 100%;
+  max-width: 860px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 32px 24px;
+}
+
+/* 隐藏滚动条但保留滚动功能 */
+.server-list-tree-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+
+.server-list-tree-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.server-list-tree-wrapper::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+.server-list-tree-wrapper:hover::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+}
+
+.server-list-tree-wrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+.server-list-tree {
+  width: 100%;
+}

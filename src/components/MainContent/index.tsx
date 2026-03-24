@@ -8,40 +8,39 @@ import {
   LinkOutlined,
   CloseOutlined,
   FolderOutlined,
-  FolderAddOutlined,
   RightOutlined,
   LeftOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   HomeOutlined,
-  SearchOutlined,
   LockOutlined,
   FileTextOutlined,
   CodeOutlined,
   ThunderboltOutlined,
   SettingOutlined,
   BookOutlined,
+  SwapOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import TerminalPanel from '../TerminalPanel'
 import SFTPPanel from '../SFTPPanel'
 import ConnectionDetailPanel from '../ConnectionDetailPanel'
 import EditorPanel from '../EditorPanel'
-import ServerTree from '../ServerTree'
 import NewSessionModal from '../SessionManager/NewSessionModal'
 import CommandsPanel from '../CommandsPanel'
 import DocPanel from '../DocPanel'
+import ServerListPanel from '../ServerListModal'
 import { useConnectionStore, connectServer, disconnectServer } from '../../stores/connectionStore'
 import { useServerStore } from '../../stores/serverStore'
 import { onSessionConnect } from '../SessionManager'
 import { useSettingsModal } from '../SettingsModal'
+import TransferPanel from '../TransferPanel'
+import { useTransferStore, initTransferProgressListener } from '../../stores/transferStore'
 import './index.css'
 
 // 序列化标签数据（用于跨窗口传输）
 interface SerializedTab {
   key: string
   label: string
-  type: 'home' | 'terminal' | 'editor' | 'commands' | 'doc'
+  type: 'home' | 'terminal' | 'editor' | 'commands' | 'doc' | 'serverList'
   serverId?: string
   serverName?: string
   connectionId?: string
@@ -53,7 +52,7 @@ interface SerializedTab {
 interface TabItem {
   key: string
   label: string
-  type: 'home' | 'terminal' | 'editor' | 'commands' | 'doc'
+  type: 'home' | 'terminal' | 'editor' | 'commands' | 'doc' | 'serverList'
   serverId?: string
   serverName?: string
   connectionId?: string
@@ -73,13 +72,13 @@ const HOME_TAB_KEY = '__home__'
 
 // 从跨窗口传输的数据反序列化为 TabItem
 function deserializeTab(tabData: Record<string, unknown>): TabItem {
-  const type = tabData.type as 'terminal' | 'editor' | 'commands' | 'doc'
+  const type = tabData.type as 'terminal' | 'editor' | 'commands' | 'doc' | 'serverList'
 
-  // commands / doc 类型特殊处理
-  if (type === 'commands' || type === 'doc') {
+  // commands / doc / serverList 类型特殊处理
+  if (type === 'commands' || type === 'doc' || type === 'serverList') {
     return {
       key: tabData.key as string,
-      label: tabData.label as string || (type === 'commands' ? '常用命令' : '使用文档'),
+      label: tabData.label as string || (type === 'commands' ? '常用命令' : type === 'serverList' ? '服务器列表' : '使用文档'),
       type,
       sftpVisible: false,
       sftpHeight: 0,
@@ -131,15 +130,7 @@ function translateError(error?: string): string {
   return error
 }
 
-interface MainContentProps {
-  sidebarCollapsed: boolean
-  onToggleSidebar: () => void
-}
-
-const MainContent: React.FC<MainContentProps> = ({
-  sidebarCollapsed,
-  onToggleSidebar,
-}) => {
+const MainContent: React.FC = () => {
   const [tabs, setTabs] = useState<TabItem[]>([
     {
       key: HOME_TAB_KEY,
@@ -160,6 +151,14 @@ const MainContent: React.FC<MainContentProps> = ({
 
   const { servers, groups, touchServer, updateServer, addServer, addGroup } = useServerStore()
   const { connections, getConnection } = useConnectionStore()
+  const transferTasks = useTransferStore(s => s.tasks)
+  const transferPanelVisible = useTransferStore(s => s.panelVisible)
+  const setTransferPanelVisible = useTransferStore(s => s.setPanelVisible)
+
+  // Initialize global transfer progress listener
+  useEffect(() => {
+    initTransferProgressListener()
+  }, [])
 
   // 新建会话弹窗状态
   const [newSessionVisible, setNewSessionVisible] = useState(false)
@@ -653,6 +652,33 @@ const MainContent: React.FC<MainContentProps> = ({
     }
     setTabs(prev => [...prev, newTab])
     setActiveKey(tabKey)
+  }
+
+  // 打开服务器列表标签
+  const openServerListTab = () => {
+    const existingTab = tabs.find(t => t.type === 'serverList')
+    if (existingTab) {
+      setActiveKey(existingTab.key)
+      return
+    }
+
+    const tabKey = `serverList-${Date.now()}`
+    const newTab: TabItem = {
+      key: tabKey,
+      label: '服务器列表',
+      type: 'serverList',
+      sftpVisible: false,
+      sftpHeight: 0,
+      sftpNavSeq: 0,
+      detailPanelVisible: false,
+    }
+    setTabs(prev => [...prev, newTab])
+    setActiveKey(tabKey)
+  }
+
+  // 关闭服务器列表标签
+  const removeServerListTab = () => {
+    setTabs(prev => prev.filter(t => t.type !== 'serverList'))
   }
 
   // 连接服务器并创建标签
@@ -1210,6 +1236,15 @@ const MainContent: React.FC<MainContentProps> = ({
       )
     }
 
+    if (tab.type === 'serverList') {
+      return (
+        <div className="tab-label">
+          <ApiOutlined />
+          <span className="tab-name">{tab.label}</span>
+        </div>
+      )
+    }
+
     if (tab.type === 'doc') {
       return (
         <div className="tab-label">
@@ -1241,35 +1276,6 @@ const MainContent: React.FC<MainContentProps> = ({
   const activeTab = tabs.find(t => t.key === activeKey)
   const showDetailPanel = activeTab?.type === 'terminal' && detailPanelVisible
 
-  // 构建新建菜单项
-  const buildNewMenuItems = (): MenuProps['items'] => {
-    const items: MenuProps['items'] = [
-      {
-        key: '__new_session__',
-        label: '新建会话...',
-        icon: <PlusOutlined />,
-      },
-      {
-        key: '__new_group__',
-        label: '新建分组',
-        icon: <FolderAddOutlined />,
-      },
-    ]
-
-    if (servers.length > 0) {
-      items.push({ type: 'divider' })
-      servers.forEach(server => {
-        items.push({
-          key: server.id,
-          label: server.name,
-          icon: <ApiOutlined />,
-        })
-      })
-    }
-
-    return items
-  }
-
   // 新建分组处理
   const handleNewGroup = () => {
     if (!newGroupName.trim()) return
@@ -1279,23 +1285,13 @@ const MainContent: React.FC<MainContentProps> = ({
     message.success('分组已创建')
   }
 
-  // 处理新建菜单点击
-  const handleNewMenuClick = ({ key }: { key: string }) => {
-    if (key === '__new_session__') {
-      setNewSessionVisible(true)
-    } else if (key === '__new_group__') {
-      setNewGroupName('')
-      setNewGroupVisible(true)
-    } else {
-      connectAndCreateTab(key)
-    }
-  }
-
   const tabItems = tabs.map((tab) => ({
     key: tab.key,
     label: renderTabLabel(tab),
     children: tab.type === 'home' ? (
-      <HomePage onConnect={connectAndCreateTab} onNewSession={() => setNewSessionVisible(true)} onOpenCommands={openCommandsTab} onOpenDoc={openDocTab} />
+      <HomePage onNewSession={() => setNewSessionVisible(true)} onOpenCommands={openCommandsTab} onOpenDoc={openDocTab} onOpenServerList={openServerListTab} />
+    ) : tab.type === 'serverList' ? (
+      <ServerListPanel onConnect={(serverId) => { removeServerListTab(); connectAndCreateTab(serverId) }} />
     ) : tab.type === 'commands' ? (
       <CommandsPanel />
     ) : tab.type === 'doc' ? (
@@ -1316,7 +1312,6 @@ const MainContent: React.FC<MainContentProps> = ({
       <SessionTabContent
         tab={tab}
         isActive={tab.key === activeKey}
-        detailPanelVisible={detailPanelVisible}
         onToggleSFTP={(path) => toggleSFTP(tab.key, path)}
         onUpdateSFTPHeight={(h) => updateSFTPHeight(tab.key, h)}
         onReconnect={() => reconnectTab(tab.key)}
@@ -1331,55 +1326,9 @@ const MainContent: React.FC<MainContentProps> = ({
 
   return (
     <div className="main-content">
-      <Tabs
-        type="editable-card"
-        activeKey={activeKey}
-        onChange={setActiveKey}
-        items={tabItems}
-        hideAdd
-        onEdit={(targetKey, action) => {
-          if (action === 'remove' && typeof targetKey === 'string') {
-            removeTab(targetKey)
-          }
-        }}
-        className="main-tabs"
-        tabBarExtraContent={{
-          left: (
-            <Button
-              type="text"
-              icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={onToggleSidebar}
-              className="sidebar-toggle-btn"
-              title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-            />
-          ),
-          right: (
-            <div className="tabbar-extra">
-              <Dropdown
-                menu={{
-                  items: buildNewMenuItems(),
-                  onClick: handleNewMenuClick,
-                }}
-                trigger={['click']}
-              >
-                <Button type="text" icon={<PlusOutlined />} title="新建连接" />
-              </Dropdown>
-              {activeTab?.type === 'terminal' && (
-                <Button
-                  type="text"
-                  icon={detailPanelVisible ? <RightOutlined /> : <LeftOutlined />}
-                  onClick={() => setDetailPanelVisible(!detailPanelVisible)}
-                  title={detailPanelVisible ? '隐藏详情面板' : '显示详情面板'}
-                />
-              )}
-            </div>
-          ),
-        }}
-      />
-
-      {/* 右侧详情面板容器 (可拖拽宽度) */}
+      {/* 左侧详情面板容器 (可拖拽宽度) */}
       {showDetailPanel && (
-        <DetailPanelResizer width={detailPanelWidth} onWidthChange={setDetailPanelWidth}>
+        <DetailPanelResizer width={detailPanelWidth} onWidthChange={setDetailPanelWidth} position="left">
           {activeTab?.type === 'terminal' && (
             <ConnectionDetailPanel
               connectionId={activeTab.connectionId}
@@ -1388,6 +1337,60 @@ const MainContent: React.FC<MainContentProps> = ({
           )}
         </DetailPanelResizer>
       )}
+
+      <Tabs
+        type="editable-card"
+        activeKey={activeKey}
+        onChange={setActiveKey}
+        items={tabItems}
+        addIcon={<PlusOutlined />}
+        onEdit={(targetKey, action) => {
+          if (action === 'add') {
+            openServerListTab()
+          } else if (action === 'remove' && typeof targetKey === 'string') {
+            removeTab(targetKey)
+          }
+        }}
+        className="main-tabs"
+        tabBarExtraContent={{
+          left: activeTab?.type === 'terminal' ? (
+            <div className="tabbar-extra" style={{ paddingLeft: 4 }}>
+              <Button
+                type="text"
+                icon={detailPanelVisible ? <LeftOutlined /> : <RightOutlined />}
+                onClick={() => setDetailPanelVisible(!detailPanelVisible)}
+                title={detailPanelVisible ? '隐藏详情面板' : '显示详情面板'}
+                className="sidebar-toggle-btn"
+              />
+            </div>
+          ) : undefined,
+          right: (
+            <div className="tabbar-extra" style={{ paddingRight: 4, position: 'relative' }}>
+              <Button
+                type="text"
+                icon={<SwapOutlined />}
+                onClick={() => {
+                  if (transferTasks.length === 0) {
+                    message.info('当前没有传输任务')
+                    return
+                  }
+                  setTransferPanelVisible(!transferPanelVisible)
+                }}
+                title="传输队列"
+                className={`sidebar-toggle-btn${transferTasks.some(t => t.status === 'transferring' || t.status === 'pending') ? ' transfer-active' : ''}`}
+                style={{ position: 'relative' }}
+              >
+                {transferTasks.filter(t => t.status === 'transferring' || t.status === 'pending').length > 0 && (
+                  <span className="transfer-badge">
+                    {transferTasks.filter(t => t.status === 'transferring' || t.status === 'pending').length}
+                  </span>
+                )}
+              </Button>
+              <TransferPanel />
+            </div>
+          ),
+        }}
+      />
 
       {/* 密码输入弹窗 */}
       <Modal
@@ -1509,22 +1512,21 @@ const MainContent: React.FC<MainContentProps> = ({
           setNewSessionVisible(false)
         }}
       />
+
     </div>
   )
 }
 
 // 首页组件
 interface HomePageProps {
-  onConnect: (serverId: string) => void
   onNewSession: () => void
   onOpenCommands: () => void
   onOpenDoc: () => void
+  onOpenServerList: () => void
 }
 
-const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenCommands, onOpenDoc }) => {
-  const { servers } = useServerStore()
+const HomePage: React.FC<HomePageProps> = ({ onNewSession, onOpenCommands, onOpenDoc, onOpenServerList }) => {
   const { openSettings } = useSettingsModal()
-  const [searchKeyword, setSearchKeyword] = useState('')
   const [shortcutTipOpen, setShortcutTipOpen] = useState(false)
 
   return (
@@ -1539,6 +1541,10 @@ const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenComm
         <div className="module-item" onClick={onNewSession}>
           <div className="module-icon"><PlusOutlined /></div>
           <span className="module-label">新建连接</span>
+        </div>
+        <div className="module-item" onClick={onOpenServerList}>
+          <div className="module-icon"><ApiOutlined /></div>
+          <span className="module-label">服务器管理</span>
         </div>
         <div className="module-item" onClick={onOpenCommands}>
           <div className="module-icon"><CodeOutlined /></div>
@@ -1557,35 +1563,6 @@ const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenComm
           <span className="module-label">全局设置</span>
         </div>
       </div>
-
-      <div className="home-search">
-        <Input
-          placeholder="搜索服务器名称、主机、备注..."
-          prefix={<SearchOutlined />}
-          allowClear
-          value={searchKeyword}
-          onChange={e => setSearchKeyword(e.target.value)}
-          className="home-search-input"
-        />
-      </div>
-
-      {servers.length === 0 ? (
-        <div className="home-empty">
-          <p>还没有服务器配置</p>
-          <Button type="primary" icon={<PlusOutlined />} onClick={onNewSession}>
-            新建连接
-          </Button>
-        </div>
-      ) : (
-        <div className="home-servers">
-          <ServerTree
-            onConnect={onConnect}
-            className="home-tree-wrapper"
-            showDetail
-            searchKeyword={searchKeyword}
-          />
-        </div>
-      )}
 
       <Modal
         open={shortcutTipOpen}
@@ -1637,7 +1614,6 @@ const HomePage: React.FC<HomePageProps> = ({ onConnect, onNewSession, onOpenComm
 interface SessionTabContentProps {
   tab: TabItem
   isActive: boolean
-  detailPanelVisible: boolean
   onToggleSFTP: (path?: string) => void
   onUpdateSFTPHeight: (height: number) => void
   onReconnect: () => void
@@ -1742,14 +1718,15 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
   )
 }
 
-// 右侧详情面板拖拽调整宽度
+// 详情面板拖拽调整宽度
 interface DetailPanelResizerProps {
   width: number
   onWidthChange: (width: number) => void
   children: React.ReactNode
+  position?: 'left' | 'right'
 }
 
-const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthChange, children }) => {
+const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthChange, children, position = 'left' }) => {
   const [isResizing, setIsResizing] = useState(false)
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
@@ -1765,8 +1742,10 @@ const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthC
     if (!isResizing) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      // 向左拖 → 宽度增大
-      const diff = startXRef.current - e.clientX
+      // 左侧面板：向右拖 → 宽度增大；右侧面板：向左拖 → 宽度增大
+      const diff = position === 'left'
+        ? e.clientX - startXRef.current
+        : startXRef.current - e.clientX
       const newWidth = Math.max(240, Math.min(500, startWidthRef.current + diff))
       onWidthChange(newWidth)
     }
@@ -1786,12 +1765,20 @@ const DetailPanelResizer: React.FC<DetailPanelResizerProps> = ({ width, onWidthC
   }, [isResizing, onWidthChange])
 
   return (
-    <div className="detail-panel-container visible" style={{ width }}>
-      <div
-        className={`detail-panel-drag-handle ${isResizing ? 'resizing' : ''}`}
-        onMouseDown={handleMouseDown}
-      />
+    <div className={`detail-panel-container visible ${position}`} style={{ width }}>
+      {position === 'right' && (
+        <div
+          className={`detail-panel-drag-handle ${isResizing ? 'resizing' : ''}`}
+          onMouseDown={handleMouseDown}
+        />
+      )}
       {children}
+      {position === 'left' && (
+        <div
+          className={`detail-panel-drag-handle ${isResizing ? 'resizing' : ''}`}
+          onMouseDown={handleMouseDown}
+        />
+      )}
     </div>
   )
 }
