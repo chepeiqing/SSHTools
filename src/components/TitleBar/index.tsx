@@ -374,7 +374,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ onConnect }) => {
           </div>
 
           <p className="about-desc">
-            开源桌面 SSH 管理工具，支持服务器管理、SSH 终端和 SFTP 文件传输。
+            开源桌面 SSH 管理工具，支持会话管理、SSH 终端和 SFTP 文件传输。
           </p>
 
           <div className="about-info">

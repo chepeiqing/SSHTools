@@ -190,6 +190,11 @@
   justify-content: center;
   border-radius: 6px;
   color: var(--text-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+.dark .title-bar-btn {
+  border-color: transparent;
 }
 
 .title-bar-btn:hover {

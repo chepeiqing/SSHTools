@@ -10,6 +10,8 @@ import {
   FolderOutlined,
   RightOutlined,
   LeftOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   HomeOutlined,
   LockOutlined,
   FileTextOutlined,
@@ -145,7 +147,7 @@ const MainContent: React.FC = () => {
   const [activeKey, setActiveKey] = useState<string>(HOME_TAB_KEY)
   const activeKeyRef = useRef(activeKey)
   activeKeyRef.current = activeKey
-  const [detailPanelVisible, setDetailPanelVisible] = useState(true)
+  const [detailPanelVisible, setDetailPanelVisible] = useState(false)
   const [detailPanelWidth, setDetailPanelWidth] = useState(300)
   const { message, modal } = App.useApp()
 
@@ -1357,7 +1359,7 @@ const MainContent: React.FC = () => {
             <div className="tabbar-extra" style={{ paddingLeft: 4 }}>
               <Button
                 type="text"
-                icon={detailPanelVisible ? <LeftOutlined /> : <RightOutlined />}
+                icon={detailPanelVisible ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
                 onClick={() => setDetailPanelVisible(!detailPanelVisible)}
                 title={detailPanelVisible ? '隐藏详情面板' : '显示详情面板'}
                 className="sidebar-toggle-btn"
@@ -1544,7 +1546,7 @@ const HomePage: React.FC<HomePageProps> = ({ onNewSession, onOpenCommands, onOpe
         </div>
         <div className="module-item" onClick={onOpenServerList}>
           <div className="module-icon"><ApiOutlined /></div>
-          <span className="module-label">服务器管理</span>
+          <span className="module-label">会话管理</span>
         </div>
         <div className="module-item" onClick={onOpenCommands}>
           <div className="module-icon"><CodeOutlined /></div>

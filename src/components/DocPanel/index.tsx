@@ -13,7 +13,7 @@ const DocPanel: React.FC = () => {
           <h3>目录</h3>
           <ul>
             <li><a href="#quick-start">快速开始</a></li>
-            <li><a href="#server-manage">服务器管理</a></li>
+            <li><a href="#server-manage">会话管理</a></li>
             <li><a href="#terminal">SSH 终端</a></li>
             <li><a href="#sftp">SFTP 文件管理</a></li>
             <li><a href="#editor">在线编辑器</a></li>
@@ -38,7 +38,7 @@ const DocPanel: React.FC = () => {
         </section>
 
         <section id="server-manage" className="doc-section">
-          <h2>服务器管理</h2>
+          <h2>会话管理</h2>
 
           <h3>新建会话</h3>
           <p>支持两种认证方式：</p>

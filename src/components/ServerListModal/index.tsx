@@ -18,7 +18,7 @@ const ServerListPanel: React.FC<ServerListPanelProps> = ({ onConnect }) => {
   return (
     <div className="server-list-panel">
       <div className="server-list-topbar">
-        <span className="server-list-topbar-title">服务器管理</span>
+        <span className="server-list-topbar-title">会话管理</span>
         <Input
           prefix={<SearchOutlined />}
           placeholder="搜索服务器..."

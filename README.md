@@ -6,7 +6,7 @@
 
 **开源跨平台桌面 SSH 管理工具**
 
-基于 Electron + React + TypeScript 构建，集服务器管理、SSH 终端、SFTP 文件传输于一体。
+基于 Electron + React + TypeScript 构建，集会话管理、SSH 终端、SFTP 文件传输于一体。
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-28-47848F.svg)](https://www.electronjs.org/)
@@ -21,11 +21,11 @@
 
 ## 截图预览
 
-### SSH 终端 + 服务器管理
+### SSH 终端 + 会话管理
 
 > 左侧树形分组管理服务器，中间 SSH 终端，右侧实时资源监控面板
 
-![SSH 终端与服务器管理](images/ssh-tools-server.png)
+![SSH 终端与会话管理](images/ssh-tools-server.png)
 
 ### SFTP 文件管理
 
@@ -72,7 +72,7 @@
 - 传输进度实时显示
 - 列宽可拖拽调整，SFTP 面板高度可拖拽调整
 
-### 服务器管理
+### 会话管理
 
 - **树形分组**管理，支持多级嵌套子分组
 - 支持 **密码** 和 **SSH 密钥** 两种认证方式

@@ -329,33 +329,22 @@ class SSHManager {
 
       const loginInfoPromise = new Promise<string>((loginResolve) => {
         conn.exec(
-          'lastlog -u $(whoami) 2>/dev/null | tail -1;' +
-          'echo "---";' +
           'faillog -u $(whoami) 2>/dev/null | tail -1',
           (execErr, execStream) => {
             if (execErr) { loginResolve(''); return }
             let output = ''
             execStream.on('data', (d: Buffer) => { output += d.toString('utf-8') })
             execStream.on('close', () => {
-              // 解析 lastlog 和 faillog 输出
-              const parts = output.split('---')
-              const lines: string[] = []
-              const lastlogLine = (parts[0] || '').trim()
-              if (lastlogLine && !lastlogLine.startsWith('Username') && !lastlogLine.startsWith('用户名')) {
-                // lastlog 格式: "root  pts/0  1.2.3.4  Mon Mar 23 22:20:39 +0800 2026"
-                const match = lastlogLine.match(/\S+\s+\S+\s+(\S+)\s+(.+)/)
-                if (match) {
-                  lines.push(`Last login: ${match[2].trim()} from ${match[1]}`)
-                }
-              }
-              const faillogLine = (parts[1] || '').trim()
+              // 只保留失败登录提示（Last login 由 shell 自己显示）
+              const faillogLine = output.trim()
               if (faillogLine && !faillogLine.startsWith('Login') && !faillogLine.startsWith('登录')) {
                 const failMatch = faillogLine.match(/\S+\s+(\d+)/)
                 if (failMatch && parseInt(failMatch[1]) > 0) {
-                  lines.push(`There were ${failMatch[1]} failed login attempts since the last successful login.`)
+                  loginResolve(`There were ${failMatch[1]} failed login attempts since the last successful login.`)
+                  return
                 }
               }
-              loginResolve(lines.join('\n'))
+              loginResolve('')
             })
             setTimeout(() => loginResolve(''), 2000)
           }

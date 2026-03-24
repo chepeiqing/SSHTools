@@ -98,7 +98,7 @@ export const useTransferStore = create<TransferState>((set, get) => ({
       
       set(state => ({
         tasks: state.tasks.map(t =>
-          t.id === id ? { ...t, status: 'failed' as const, error: '已取消', speed: undefined } : t
+          t.id === id ? { ...t, status: 'failed' as const, error: '已取消', speed: undefined, resume: false } : t
         ),
       }))
     }
@@ -245,18 +245,21 @@ export function initTransferProgressListener() {
     let speed: string | undefined
 
     // 计算速度（需要至少 300ms 间隔）
-    if (prev && now - prev.time > 0) {
+    if (prev) {
       const elapsed = (now - prev.time) / 1000
       const bytes = transferred - prev.transferred
-      if (elapsed > 0.3 && bytes >= 0) {
+      if (elapsed >= 0.3 && bytes >= 0) {
         speed = formatSpeed(bytes / elapsed)
+        // 只在计算出速度时才重置基线
+        speedTracker.set(taskId, { transferred, time: now })
       }
+    } else {
+      // 首次：记录基线，不计算速度
+      speedTracker.set(taskId, { transferred, time: now })
     }
 
     // 跳过无变化的更新
     if (percent === task.progress && !speed) return
-
-    speedTracker.set(taskId, { transferred, time: now })
 
     updateTask(taskId, {
       progress: percent,

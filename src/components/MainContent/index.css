@@ -142,6 +142,11 @@ body.tab-dragging-active * {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.dark .sidebar-toggle-btn {
+  border-color: transparent;
 }
 
 .sidebar-toggle-btn:hover {
@@ -410,6 +415,12 @@ body.tab-dragging-active * {
   font-size: 12px;
   font-weight: 500;
   color: var(--text-color);
+}
+
+/* Tab add button - 浅色模式加边框 */
+.main-tabs .ant-tabs-nav-add {
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md) !important;
 }
 
 /* Transfer badge */

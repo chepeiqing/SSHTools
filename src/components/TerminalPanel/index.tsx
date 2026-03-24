@@ -29,6 +29,7 @@ import { useThemeStore } from '../../stores/themeStore'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useServerStore } from '../../stores/serverStore'
 import { useTerminalThemeStore, getTerminalColorScheme } from '../../stores/terminalThemeStore'
+import { useTerminalHistoryStore } from '../../stores/terminalHistoryStore'
 import TerminalHistoryPanel from './TerminalHistoryPanel'
 import QuickCommandsPanel from './QuickCommandsPanel'
 import '@xterm/xterm/css/xterm.css'
@@ -72,9 +73,11 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   // 使用 ref 存储最新的连接状态，避免闭包问题
   const connectionIdRef = useRef(connectionId)
+  const serverIdRef = useRef(serverId)
   const isConnectedRef = useRef(false)
   const onReconnectRef = useRef(onReconnect)
   const wordWrapRef = useRef(wordWrap)
+  const addCommandRef = useRef<(serverId: string, command: string) => void>(() => {})
 
   // 获取连接状态
   const connection = connectionId ? getConnection(connectionId) : undefined
@@ -83,6 +86,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
   // 直接在渲染时更新 ref，确保闭包中始终拿到最新值
   connectionIdRef.current = connectionId
+  serverIdRef.current = serverId
   isConnectedRef.current = isConnected || false
   onReconnectRef.current = onReconnect
   wordWrapRef.current = wordWrap
@@ -106,10 +110,14 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const [searchVisible, setSearchVisible] = useState(false)
   const [searchText, setSearchText] = useState('')
 
-  // 历史命令
+  // 历史命令 - 使用本地 store
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [historyCommands, setHistoryCommands] = useState<string[]>([])
-  const [historyLoading, setHistoryLoading] = useState(false)
+  const { getHistory, addCommand, deleteCommand, clearHistory } = useTerminalHistoryStore()
+  const historyCommands = serverId ? getHistory(serverId) : []
+  // 输入缓冲区（用于保存历史命令）
+  const inputBufferRef = useRef('')
+  // 更新 addCommandRef
+  addCommandRef.current = addCommand
 
   // 右键菜单
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null)
@@ -283,6 +291,35 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     term.onData((data) => {
       if (connectionIdRef.current && isConnectedRef.current) {
         window.electronAPI.sshWrite(connectionIdRef.current, data)
+
+        // 追踪用户输入以保存历史命令
+        const sid = serverIdRef.current
+        if (sid) {
+          if (data === '\r' || data === '\n') {
+            // 回车：保存缓冲区中的命令
+            const cmd = inputBufferRef.current.trim()
+            if (cmd) {
+              addCommandRef.current(sid, cmd)
+            }
+            inputBufferRef.current = ''
+          } else if (data === '\x03') {
+            // Ctrl+C：清空缓冲区
+            inputBufferRef.current = ''
+          } else if (data === '\x15') {
+            // Ctrl+U：清空当前行
+            inputBufferRef.current = ''
+          } else if (data === '\x7f' || data === '\b') {
+            // 退格/删除：删除最后一个字符
+            inputBufferRef.current = inputBufferRef.current.slice(0, -1)
+          } else if (data.charCodeAt(0) >= 32 && data.charCodeAt(0) < 127) {
+            // 可打印 ASCII 字符：累积到缓冲区
+            inputBufferRef.current += data
+          } else if (data.charCodeAt(0) > 127) {
+            // 非 ASCII 字符（如中文）：累积到缓冲区
+            inputBufferRef.current += data
+          }
+          // 忽略其他控制字符（如方向键、功能键等）
+        }
       } else if (data === '\r' || data === '\n') {
         // 断开连接后，按回车触发重连
         if (onReconnectRef.current) {
@@ -353,7 +390,6 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         term.writeln('')
         term.writeln('\x1b[32m  SSHTools Terminal\x1b[0m')
         // term.writeln(`\x1b[90m  ssh ${serverConfig.username}@${serverConfig.host}${portStr}\x1b[0m`)
-        term.writeln(`\x1b[90m  正在连接...\x1b[0m`)
       }
 
       resizeObserver.observe(container)
@@ -678,37 +714,18 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }
   }
 
-  // 获取历史命令（通过交互式 shell 获取，能读到当前会话的命令）
-  const fetchHistory = useCallback(async () => {
-    if (!connectionId || !isConnected) return
-    setHistoryLoading(true)
-    try {
-      const result = await window.electronAPI.sshGetShellHistory(connectionId, 200)
-      if (result.success && result.output) {
-        const cmds = result.output
-          .split('\n')
-          .map(line => {
-            // bash history 格式: "  123  command" / zsh fc 格式: "  123  command"
-            return line.replace(/^\s*\d+\*?\s+/, '').trim()
-          })
-          .filter(line => line.length > 0)
-          .reverse()
-        // 去重，限制最多 50 条
-        const unique = [...new Set(cmds)].slice(0, 50)
-        setHistoryCommands(unique)
-      }
-    } catch { /* ignore */ }
-    setHistoryLoading(false)
-  }, [connectionId, isConnected])
-
   // 执行历史命令（写入 shell）
   const executeHistoryCommand = useCallback((cmd: string) => {
     if (connectionId && isConnected) {
       window.electronAPI.sshWrite(connectionId, cmd + '\n')
+      // 同时保存到本地历史（确保执行的命令被记录）
+      if (serverId) {
+        addCommandRef.current(serverId, cmd)
+      }
     }
     setHistoryOpen(false)
     terminalInstance.current?.focus()
-  }, [connectionId, isConnected])
+  }, [connectionId, isConnected, serverId])
 
   // 构建右键菜单
   const hasSelection = terminalInstance.current?.hasSelection() || false
@@ -949,16 +966,13 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             />
           </Tooltip>
 
-          {connection && isConnected && (
+          {connection && isConnected && serverId && (
             <Tooltip title="历史命令">
               <Button
                 icon={<HistoryOutlined />}
                 size="small"
                 type={historyOpen ? 'primary' : 'default'}
-                onClick={() => {
-                  if (!historyOpen) fetchHistory()
-                  setHistoryOpen(!historyOpen)
-                }}
+                onClick={() => setHistoryOpen(!historyOpen)}
               />
             </Tooltip>
           )}
@@ -992,11 +1006,12 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
       </div>
 
       {/* 历史命令面板 */}
-      {historyOpen && (
+      {historyOpen && serverId && (
         <TerminalHistoryPanel
           commands={historyCommands}
-          loading={historyLoading}
           onExecute={executeHistoryCommand}
+          onDelete={(cmd) => deleteCommand(serverId, cmd)}
+          onClear={() => clearHistory(serverId)}
           onClose={() => setHistoryOpen(false)}
         />
       )}

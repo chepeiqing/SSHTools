@@ -131,20 +131,42 @@
 }
 
 .history-item {
-  padding: 6px 12px;
-  font-size: 12px;
-  font-family: Consolas, Monaco, 'Courier New', monospace;
-  color: var(--text-color);
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--border-color-light, rgba(0,0,0,0.04));
 }
 
 .history-item:hover {
   background: var(--hover-bg);
-  color: var(--primary-color);
+}
+
+.history-cmd {
+  flex: 1;
+  font-size: 12px;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.history-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.history-item:hover .history-actions {
+  opacity: 1;
+}
+
+.history-actions .ant-btn {
+  padding: 2px 4px;
+  height: auto;
 }
 
 .history-empty {
