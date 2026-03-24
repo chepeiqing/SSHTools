@@ -95,7 +95,8 @@ export interface ElectronAPI {
   sftpRename: (id: string, oldPath: string, newPath: string) => Promise<{ success: boolean; error?: string }>
   sftpDownload: (id: string, remotePath: string, localPath: string, resume?: boolean, taskId?: string) => Promise<{ success: boolean; error?: string }>
   sftpUpload: (id: string, localPath: string, remotePath: string, resume?: boolean, taskId?: string) => Promise<{ success: boolean; error?: string }>
-  sftpAbort: (taskId: string) => Promise<{ success: boolean }>
+  sftpAbort: (taskId: string, action?: 'pause' | 'cancel') => Promise<{ success: boolean }>
+  sftpDiscardTransfer: (id: string, type: 'upload' | 'download', localPath: string, remotePath: string) => Promise<{ success: boolean; error?: string }>
   sftpGetcwd: (id: string) => Promise<{ success: boolean; path?: string; error?: string }>
   sftpChmod: (id: string, remotePath: string, mode: string) => Promise<{ success: boolean; error?: string }>
   sftpTouch: (id: string, remotePath: string) => Promise<{ success: boolean; error?: string }>

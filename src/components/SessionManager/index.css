@@ -125,9 +125,10 @@
   position: absolute;
   top: 0;
   right: -4px;
-  width: 2px;
+  width: 1px;
   padding: 0 5px;
   background-clip: content-box;
+  background-color: var(--border-color);
   height: 100%;
   cursor: col-resize;
   z-index: 20;
@@ -145,12 +146,14 @@
   background-image: radial-gradient(circle, var(--text-tertiary) 1px, transparent 1px);
   background-size: 4px 6px;
   background-position: center;
+  opacity: 1;
+  transition: opacity 0.15s, background-image 0.15s;
 }
 
 .resize-handle:hover,
 .resize-handle.resizing {
-  background-clip: padding-box;
   background-color: var(--primary-color);
+  box-shadow: 0 0 0 1.5px var(--primary-color);
 }
 
 .resize-handle:hover::after,

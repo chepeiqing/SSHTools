@@ -292,7 +292,7 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       .map(t => t.fileName)
 
     const doAdd = () => {
-      addTransferTasks(tasks.map(t => ({
+      const result = addTransferTasks(tasks.map(t => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         connectionId: connectionId!,
         serverName: connection?.serverName || '',
@@ -301,6 +301,9 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
         localPath: t.filePath,
         remotePath: t.remotePath,
       })))
+      if (result.skipped > 0) {
+        message.warning(`已跳过 ${result.skipped} 个同名传输任务，目标已在传输队列中`)
+      }
     }
 
     if (conflicts.length > 0) {
@@ -355,7 +358,7 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       if (result.canceled || result.filePaths.length === 0) return
 
       const destDir = result.filePaths[0]
-      addTransferTasks(selectedFiles.map(file => ({
+      const queueResult = addTransferTasks(selectedFiles.map(file => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`,
         connectionId: connectionId!,
         serverName: connection?.serverName || '',
@@ -364,6 +367,9 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
         localPath: `${destDir}/${file.name}`,
         remotePath: joinRemotePath(remotePath, file.name),
       })))
+      if (queueResult.skipped > 0) {
+        message.warning(`已跳过 ${queueResult.skipped} 个重复下载任务，目标已在传输队列中`)
+      }
     }
   }
 
@@ -377,7 +383,7 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
     const result = await window.electronAPI.dialogSaveFile(file.name)
     if (result.canceled || !result.filePath) return
 
-    addTransferTasks([{
+    const queueResult = addTransferTasks([{
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       connectionId: connectionId!,
       serverName: connection?.serverName || '',
@@ -386,6 +392,9 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       localPath: result.filePath!,
       remotePath: joinRemotePath(remotePath, file.name),
     }])
+    if (queueResult.skipped > 0) {
+      message.warning('该文件已在传输队列中')
+    }
   }
 
   // 创建文件夹

@@ -1337,7 +1337,7 @@ const MainContent: React.FC = () => {
 
   // 获取当前活动标签
   const activeTab = tabs.find(t => t.key === activeKey)
-  const showDetailPanel = activeTab?.type === 'terminal' && detailPanelVisible
+  const showDetailPanel = (activeTab?.type === 'terminal' || activeTab?.type === 'home') && detailPanelVisible
 
   // 新建分组处理
   const handleNewGroup = () => {
@@ -1392,10 +1392,17 @@ const MainContent: React.FC = () => {
       {/* 左侧详情面板容器 (可拖拽宽度) */}
       {showDetailPanel && (
         <DetailPanelResizer width={detailPanelWidth} onWidthChange={setDetailPanelWidth} position="left">
-          {activeTab?.type === 'terminal' && (
+          {activeTab?.type === 'terminal' ? (
             <ConnectionDetailPanel
               connectionId={activeTab.connectionId}
               serverName={activeTab.serverName}
+            />
+          ) : (
+            <HomeSidebar
+              onNewSession={() => setNewSessionVisible(true)}
+              onOpenCommands={openCommandsTab}
+              onOpenServerList={openServerListTab}
+              onConnectServer={connectAndCreateTab}
             />
           )}
         </DetailPanelResizer>
@@ -1416,13 +1423,13 @@ const MainContent: React.FC = () => {
         }}
         className="main-tabs"
         tabBarExtraContent={{
-          left: activeTab?.type === 'terminal' ? (
+          left: activeTab?.type === 'terminal' || activeTab?.type === 'home' ? (
             <div className="tabbar-extra" style={{ paddingLeft: 4 }}>
               <Button
                 type="text"
                 icon={detailPanelVisible ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
                 onClick={() => setDetailPanelVisible(!detailPanelVisible)}
-                title={detailPanelVisible ? '隐藏详情面板' : '显示详情面板'}
+                title={detailPanelVisible ? '隐藏左侧栏' : '显示左侧栏'}
                 className="sidebar-toggle-btn"
               />
             </div>
@@ -1440,12 +1447,12 @@ const MainContent: React.FC = () => {
                   setTransferPanelVisible(!transferPanelVisible)
                 }}
                 title="传输队列"
-                className={`sidebar-toggle-btn${transferTasks.some(t => t.status === 'transferring' || t.status === 'pending') ? ' transfer-active' : ''}`}
+                className={`sidebar-toggle-btn${transferTasks.some(t => t.status === 'transferring' || t.status === 'pending' || t.status === 'paused') ? ' transfer-active' : ''}`}
                 style={{ position: 'relative' }}
               >
-                {transferTasks.filter(t => t.status === 'transferring' || t.status === 'pending').length > 0 && (
+                {transferTasks.filter(t => t.status === 'transferring' || t.status === 'pending' || t.status === 'paused').length > 0 && (
                   <span className="transfer-badge">
-                    {transferTasks.filter(t => t.status === 'transferring' || t.status === 'pending').length}
+                    {transferTasks.filter(t => t.status === 'transferring' || t.status === 'pending' || t.status === 'paused').length}
                   </span>
                 )}
               </Button>
@@ -1586,6 +1593,87 @@ interface HomePageProps {
   onOpenCommands: () => void
   onOpenDoc: () => void
   onOpenServerList: () => void
+}
+
+interface HomeSidebarProps {
+  onNewSession: () => void
+  onOpenCommands: () => void
+  onOpenServerList: () => void
+  onConnectServer: (serverId: string) => void
+}
+
+const HomeSidebar: React.FC<HomeSidebarProps> = ({ onNewSession, onOpenCommands, onOpenServerList, onConnectServer }) => {
+  const { servers } = useServerStore()
+  const { connections } = useConnectionStore()
+
+  const recentServers = [...servers]
+    .filter(server => server.lastConnectedAt)
+    .sort((a, b) => (b.lastConnectedAt || 0) - (a.lastConnectedAt || 0))
+    .slice(0, 5)
+
+  const getServerStatus = (serverId: string) => {
+    const activeConnection = Array.from(connections.values()).find(
+      conn => conn.serverId === serverId && conn.status === 'connected'
+    )
+    return activeConnection ? 'online' : 'idle'
+  }
+
+  return (
+    <div className="home-sidebar">
+      <div className="home-sidebar-section">
+        <div className="home-sidebar-title">工作台</div>
+        <div className="home-sidebar-nav-list">
+          <button type="button" className="home-sidebar-nav-item" onClick={onNewSession}>
+            <span className="home-sidebar-nav-icon"><PlusOutlined /></span>
+            <span className="home-sidebar-nav-label">新建连接</span>
+          </button>
+          <button type="button" className="home-sidebar-nav-item" onClick={onOpenServerList}>
+            <span className="home-sidebar-nav-icon"><ApiOutlined /></span>
+            <span className="home-sidebar-nav-label">会话管理</span>
+          </button>
+          <button type="button" className="home-sidebar-nav-item" onClick={onOpenCommands}>
+            <span className="home-sidebar-nav-icon"><CodeOutlined /></span>
+            <span className="home-sidebar-nav-label">常用命令</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="home-sidebar-section">
+        <div className="home-sidebar-title">最近连接</div>
+        {recentServers.length > 0 ? (
+          <div className="home-sidebar-recent-list">
+            {recentServers.map(server => (
+              <button
+                key={server.id}
+                type="button"
+                className="home-sidebar-recent-item"
+                onClick={() => onConnectServer(server.id)}
+                title={`${server.username}@${server.host}:${server.port}`}
+              >
+                <span className={`home-sidebar-status-dot ${getServerStatus(server.id)}`} />
+                <span className="home-sidebar-recent-main">
+                  <span className="home-sidebar-recent-name">{server.name}</span>
+                  <span className="home-sidebar-recent-host">{server.username}@{server.host}</span>
+                </span>
+                <LinkOutlined className="home-sidebar-recent-arrow" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="home-sidebar-empty">
+            暂无最近连接
+          </div>
+        )}
+      </div>
+
+      <div className="home-sidebar-section">
+        <div className="home-sidebar-title">说明</div>
+        <div className="home-sidebar-note">
+          首页主区负责操作，左侧保留最近连接和快捷入口。
+        </div>
+      </div>
+    </div>
+  )
 }
 
 const HomePage: React.FC<HomePageProps> = ({ onNewSession, onOpenCommands, onOpenDoc, onOpenServerList }) => {
@@ -1762,7 +1850,7 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
   return (
     <div ref={containerRef} className="session-tab-content">
       {/* 终端面板 */}
-      <div className="terminal-wrapper" style={sftpReady ? { height: `calc(100% - ${tab.sftpHeight}px - 6px)`, flex: 'none' } : undefined}>
+      <div className="terminal-wrapper" style={sftpReady ? { height: `calc(100% - ${tab.sftpHeight}px - 5px)`, flex: 'none' } : undefined}>
         <TerminalPanel
           connectionId={tab.connectionId}
           serverId={tab.serverId}

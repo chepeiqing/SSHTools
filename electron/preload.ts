@@ -131,8 +131,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('sftp-upload', id, localPath, remotePath, resume, taskId),
 
   // 取消传输
-  sftpAbort: (taskId: string) =>
-    ipcRenderer.invoke('sftp-abort', taskId),
+  sftpAbort: (taskId: string, action?: 'pause' | 'cancel') =>
+    ipcRenderer.invoke('sftp-abort', taskId, action),
+  sftpDiscardTransfer: (id: string, type: 'upload' | 'download', localPath: string, remotePath: string) =>
+    ipcRenderer.invoke('sftp-discard-transfer', id, type, localPath, remotePath),
 
   // 获取工作目录
   sftpGetcwd: (id: string) => ipcRenderer.invoke('sftp-getcwd', id),

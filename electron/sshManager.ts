@@ -45,6 +45,7 @@ export interface SystemStats {
 // 活跃传输（用于取消）
 interface ActiveTransfer {
   aborted: boolean
+  abortAction?: 'pause' | 'cancel'
   readStream?: fs.ReadStream
   writeStream?: fs.WriteStream | SFTPWrapper
   tempPath?: string  // 临时文件路径（上传时使用）
@@ -770,8 +771,10 @@ class SSHManager {
             cleanup()
             writeStream.destroy()
             if (transfer.aborted) {
-              deleteTempFile()
-              resolve({ success: false, error: '已取消' })
+              if (transfer.abortAction !== 'pause') {
+                deleteTempFile()
+              }
+              resolve({ success: false, error: transfer.abortAction === 'pause' ? '已暂停' : '已取消' })
             } else {
               resolve({ success: false, error: err.message })
             }
@@ -781,8 +784,10 @@ class SSHManager {
             cleanup()
             readStream.destroy()
             if (transfer.aborted) {
-              deleteTempFile()
-              resolve({ success: false, error: '已取消' })
+              if (transfer.abortAction !== 'pause') {
+                deleteTempFile()
+              }
+              resolve({ success: false, error: transfer.abortAction === 'pause' ? '已暂停' : '已取消' })
             } else {
               resolve({ success: false, error: err.message })
             }
@@ -791,8 +796,10 @@ class SSHManager {
           writeStream.on('finish', () => {
             cleanup()
             if (transfer.aborted) {
-              deleteTempFile()
-              resolve({ success: false, error: '已取消' })
+              if (transfer.abortAction !== 'pause') {
+                deleteTempFile()
+              }
+              resolve({ success: false, error: transfer.abortAction === 'pause' ? '已暂停' : '已取消' })
             } else {
               // 下载完成，重命名临时文件为最终文件名
               const renamed = renameTempFile()
@@ -926,8 +933,10 @@ class SSHManager {
             cleanup()
             writeStream.destroy()
             if (transfer.aborted) {
-              deleteTempFile()
-              resolve({ success: false, error: '已取消' })
+              if (transfer.abortAction !== 'pause') {
+                void deleteTempFile()
+              }
+              resolve({ success: false, error: transfer.abortAction === 'pause' ? '已暂停' : '已取消' })
             } else {
               resolve({ success: false, error: err.message })
             }
@@ -937,8 +946,10 @@ class SSHManager {
             cleanup()
             readStream.destroy()
             if (transfer.aborted) {
-              deleteTempFile()
-              resolve({ success: false, error: '已取消' })
+              if (transfer.abortAction !== 'pause') {
+                void deleteTempFile()
+              }
+              resolve({ success: false, error: transfer.abortAction === 'pause' ? '已暂停' : '已取消' })
             } else {
               resolve({ success: false, error: err.message })
             }
@@ -947,8 +958,10 @@ class SSHManager {
           writeStream.on('close', async () => {
             cleanup()
             if (transfer.aborted) {
-              await deleteTempFile()
-              resolve({ success: false, error: '已取消' })
+              if (transfer.abortAction !== 'pause') {
+                await deleteTempFile()
+              }
+              resolve({ success: false, error: transfer.abortAction === 'pause' ? '已暂停' : '已取消' })
             } else {
               // 上传完成，重命名临时文件为最终文件名
               const renamed = await renameTempFile()
@@ -976,10 +989,11 @@ class SSHManager {
   }
 
   // 取消传输
-  abortTransfer(taskId: string): boolean {
+  abortTransfer(taskId: string, action: 'pause' | 'cancel' = 'cancel'): boolean {
     const transfer = this.activeTransfers.get(taskId)
     if (transfer) {
       transfer.aborted = true
+      transfer.abortAction = action
       // 销毁流
       if (transfer.readStream) {
         try { transfer.readStream.destroy() } catch { /* ignore */ }
@@ -990,6 +1004,44 @@ class SSHManager {
       return true
     }
     return false
+  }
+
+  async discardTransferTemp(
+    id: string,
+    type: 'upload' | 'download',
+    localPath: string,
+    remotePath: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (type === 'download') {
+      const localPathError = this.validateLocalPath(localPath)
+      if (localPathError) return { success: false, error: localPathError }
+
+      try {
+        fs.unlinkSync(localPath + '.part')
+      } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+          return { success: false, error: err instanceof Error ? err.message : '清理临时文件失败' }
+        }
+      }
+      return { success: true }
+    }
+
+    const remotePathError = this.validateRemotePath(remotePath)
+    if (remotePathError) return { success: false, error: remotePathError }
+
+    const sftp = this.sftpConnections.get(id)
+    if (!sftp) return { success: false, error: 'SFTP 连接不存在' }
+
+    const tempPath = remotePath + '.part'
+    return new Promise((resolve) => {
+      sftp.unlink(tempPath, (err) => {
+        if (!err || (err as NodeJS.ErrnoException).code === 2) {
+          resolve({ success: true })
+        } else {
+          resolve({ success: false, error: err.message })
+        }
+      })
+    })
   }
 
   // 获取文件信息

@@ -284,8 +284,18 @@ ipcMain.handle('sftp-upload', async (event: IpcMainInvokeEvent, id: string, loca
 })
 
 // 取消传输
-ipcMain.handle('sftp-abort', async (_event: IpcMainInvokeEvent, taskId: string) => {
-  return { success: sshManager.abortTransfer(taskId) }
+ipcMain.handle('sftp-abort', async (_event: IpcMainInvokeEvent, taskId: string, action?: 'pause' | 'cancel') => {
+  return { success: sshManager.abortTransfer(taskId, action || 'cancel') }
+})
+
+ipcMain.handle('sftp-discard-transfer', async (
+  _event: IpcMainInvokeEvent,
+  id: string,
+  type: 'upload' | 'download',
+  localPath: string,
+  remotePath: string
+) => {
+  return await sshManager.discardTransferTemp(id, type, localPath, remotePath)
 })
 
 // 获取工作目录

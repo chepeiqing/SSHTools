@@ -158,6 +158,16 @@
 
 .transfer-item-actions {
   flex-shrink: 0;
-  width: 36px;
+  min-width: 64px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
   text-align: right;
+}
+
+.transfer-action-btn {
+  padding: 0 4px !important;
+  height: 22px !important;
+  font-size: 12px !important;
 }

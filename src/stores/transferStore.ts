@@ -8,7 +8,7 @@ export interface TransferTask {
   fileName: string
   localPath: string
   remotePath: string
-  status: 'pending' | 'transferring' | 'completed' | 'failed'
+  status: 'pending' | 'transferring' | 'paused' | 'cancelled' | 'completed' | 'failed'
   progress: number
   speed?: string
   error?: string
@@ -20,9 +20,11 @@ interface TransferState {
   panelVisible: boolean
   maxConcurrent: number
 
-  addTasks: (tasks: Omit<TransferTask, 'status' | 'progress'>[]) => void
+  addTasks: (tasks: Omit<TransferTask, 'status' | 'progress'>[]) => { added: number; skipped: number }
   updateTask: (id: string, data: Partial<TransferTask>) => void
+  pauseTask: (id: string) => void
   cancelTask: (id: string) => void
+  resumeTask: (id: string) => void
   retryTask: (id: string) => void
   clearCompleted: () => void
   clearAll: () => void
@@ -30,9 +32,16 @@ interface TransferState {
   processQueue: () => void
 }
 
-// 每个正在执行的任务：taskId -> { cancelled, abortController }
-// abortController 用于真正中止 electron 端的传输
-const activeTransfers = new Map<string, { cancelled: boolean }>()
+type TransferAbortAction = 'pause' | 'cancel'
+
+function getTaskConflictKey(task: Pick<TransferTask, 'type' | 'connectionId' | 'remotePath' | 'localPath'>): string {
+  return task.type === 'upload'
+    ? `upload:${task.connectionId}:${task.remotePath}`
+    : `download:${task.connectionId}:${task.remotePath}:${task.localPath}`
+}
+
+// 每个正在执行的任务：taskId -> { aborting }
+const activeTransfers = new Map<string, { aborting?: TransferAbortAction }>()
 
 // 速度追踪：taskId -> { transferred, time }
 const speedTracker = new Map<string, { transferred: number; time: number }>()
@@ -55,19 +64,31 @@ export const useTransferStore = create<TransferState>((set, get) => ({
       status: 'pending' as const,
       progress: 0,
     }))
-    // 新任务的 connectionId:remotePath 集合，用于去重
-    const newKeys = new Set(tasks.map(t => `${t.connectionId}:${t.remotePath}`))
+    const newKeys = new Set(tasks.map(getTaskConflictKey))
+    const existingTasks = get().tasks
+    const blockingKeys = new Set(
+      existingTasks
+        .filter(t => t.status === 'transferring' || t.status === 'pending' || t.status === 'paused')
+        .map(getTaskConflictKey)
+    )
+    const acceptedTasks = tasks.filter(t => !blockingKeys.has(getTaskConflictKey(t)))
     set(state => ({
       tasks: [
-        // 移除同 connectionId+remotePath 的已完成/已失败旧条目，避免重传时出现两条记录
+        // 对同一传输目标只保留最新终态记录，活跃任务则阻止重复入队
         ...state.tasks.filter(t =>
-          !newKeys.has(`${t.connectionId}:${t.remotePath}`) || (t.status !== 'failed' && t.status !== 'completed')
+          !newKeys.has(getTaskConflictKey(t))
+            || t.status === 'transferring'
+            || t.status === 'pending'
+            || t.status === 'paused'
         ),
-        ...tasks,
+        ...acceptedTasks,
       ],
-      panelVisible: true,
+      panelVisible: state.panelVisible || acceptedTasks.length > 0,
     }))
-    queueMicrotask(() => get().processQueue())
+    if (acceptedTasks.length > 0) {
+      queueMicrotask(() => get().processQueue())
+    }
+    return { added: acceptedTasks.length, skipped: tasks.length - acceptedTasks.length }
   },
 
   updateTask: (id, data) => {
@@ -76,39 +97,82 @@ export const useTransferStore = create<TransferState>((set, get) => ({
     }))
   },
 
+  pauseTask: (id) => {
+    const task = get().tasks.find(t => t.id === id)
+    if (!task || task.status !== 'transferring') return
+
+    const active = activeTransfers.get(id)
+    if (!active) return
+    if (active?.aborting) return
+
+    active.aborting = 'pause'
+    speedTracker.delete(id)
+    void window.electronAPI.sftpAbort(id, 'pause')
+
+    get().updateTask(id, {
+      status: 'paused',
+      speed: undefined,
+      error: undefined,
+      resume: true,
+    })
+  },
+
   cancelTask: (id) => {
     const task = get().tasks.find(t => t.id === id)
     if (!task) return
 
-    if (task.status === 'pending') {
-      // 待处理任务：直接从队列移除
-      set(state => ({
-        tasks: state.tasks.filter(t => t.id !== id),
-      }))
-    } else if (task.status === 'transferring') {
-      // 传输中任务：先标记取消，再调用 electron 端中止传输
-      const active = activeTransfers.get(id)
-      if (active) {
-        active.cancelled = true
-      }
+    if (task.status === 'pending' || task.status === 'paused') {
       speedTracker.delete(id)
-      
-      // 调用 electron 端中止传输
-      window.electronAPI.sftpAbort(id)
-      
-      set(state => ({
-        tasks: state.tasks.map(t =>
-          t.id === id ? { ...t, status: 'failed' as const, error: '已取消', speed: undefined, resume: false } : t
-        ),
-      }))
+      if (task.status === 'paused') {
+        void window.electronAPI.sftpDiscardTransfer(task.connectionId, task.type, task.localPath, task.remotePath)
+      }
+      get().updateTask(id, {
+        status: 'cancelled',
+        speed: undefined,
+        error: undefined,
+        resume: false,
+      })
+    } else if (task.status === 'transferring') {
+      const active = activeTransfers.get(id)
+      if (!active) return
+      if (active?.aborting) return
+
+      active.aborting = 'cancel'
+      speedTracker.delete(id)
+      void window.electronAPI.sftpAbort(id, 'cancel')
+
+      get().updateTask(id, {
+        status: 'cancelled',
+        speed: undefined,
+        error: undefined,
+        resume: false,
+      })
     }
+  },
+
+  resumeTask: (id) => {
+    set(state => ({
+      tasks: state.tasks.map(t =>
+        t.id === id && t.status === 'paused'
+          ? { ...t, status: 'pending' as const, speed: undefined, error: undefined, resume: true }
+          : t
+      ),
+    }))
+    queueMicrotask(() => get().processQueue())
   },
 
   retryTask: (id) => {
     set(state => ({
       tasks: state.tasks.map(t =>
-        t.id === id && t.status === 'failed'
-          ? { ...t, status: 'pending' as const, progress: 0, speed: undefined, error: undefined, resume: true }
+        t.id === id && (t.status === 'failed' || t.status === 'cancelled')
+          ? {
+              ...t,
+              status: 'pending' as const,
+              progress: t.status === 'failed' ? t.progress : 0,
+              speed: undefined,
+              error: undefined,
+              resume: t.status === 'failed',
+            }
           : t
       ),
     }))
@@ -117,18 +181,34 @@ export const useTransferStore = create<TransferState>((set, get) => ({
 
   clearCompleted: () => {
     set(state => ({
-      tasks: state.tasks.filter(t => t.status !== 'completed'),
+      tasks: state.tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled'),
     }))
   },
 
   clearAll: () => {
-    // 中止所有活跃传输
+    const tasks = get().tasks
     for (const [taskId, info] of activeTransfers) {
-      info.cancelled = true
-      window.electronAPI.sftpAbort(taskId)
+      if (info.aborting) continue
+      info.aborting = 'cancel'
+      void window.electronAPI.sftpAbort(taskId, 'cancel')
+    }
+    for (const task of tasks) {
+      if (task.status === 'paused') {
+        void window.electronAPI.sftpDiscardTransfer(task.connectionId, task.type, task.localPath, task.remotePath)
+      }
     }
     speedTracker.clear()
-    set({ tasks: [] })
+    set(state => ({
+      tasks: state.tasks
+        .filter(task => task.status === 'transferring' || task.status === 'pending' || task.status === 'paused')
+        .map(task => ({
+          ...task,
+          status: 'cancelled' as const,
+          speed: undefined,
+          error: undefined,
+          resume: false,
+        })),
+    }))
   },
 
   setPanelVisible: (v) => set({ panelVisible: v }),
@@ -143,17 +223,27 @@ export const useTransferStore = create<TransferState>((set, get) => ({
     // 获取待处理任务（按添加顺序）
     const pending = tasks.filter(t => t.status === 'pending')
     const slotsAvailable = maxConcurrent - transferringCount
-    const toStart = pending.slice(0, slotsAvailable)
+    const activeKeys = new Set(
+      tasks
+        .filter(t => t.status === 'transferring')
+        .map(getTaskConflictKey)
+    )
+    const toStart = pending
+      .filter(task => !activeKeys.has(getTaskConflictKey(task)))
+      .slice(0, slotsAvailable)
 
     for (const task of toStart) {
       const taskId = task.id
-      
-      // 初始化活跃传输记录
-      activeTransfers.set(taskId, { cancelled: false })
+      activeKeys.add(getTaskConflictKey(task))
+
+      activeTransfers.set(taskId, {})
       speedTracker.delete(taskId)
-      
-      // 更新任务状态
-      get().updateTask(taskId, { status: 'transferring', progress: 0, speed: undefined })
+
+      get().updateTask(taskId, {
+        status: 'transferring',
+        progress: task.resume ? task.progress : 0,
+        speed: undefined,
+      })
 
       // 执行传输（传递 taskId 给 electron）
       const run = async () => {
@@ -177,11 +267,9 @@ export const useTransferStore = create<TransferState>((set, get) => ({
             )
           }
 
-          // 检查是否已被取消
           const active = activeTransfers.get(taskId)
-          if (active?.cancelled) return
+          if (active?.aborting) return
 
-          // 更新最终状态
           const current = get().tasks.find(t => t.id === taskId)
           if (current && current.status === 'transferring') {
             get().updateTask(taskId, {
@@ -193,7 +281,7 @@ export const useTransferStore = create<TransferState>((set, get) => ({
           }
         } catch (err: unknown) {
           const active = activeTransfers.get(taskId)
-          if (active?.cancelled) return
+          if (active?.aborting) return
 
           const current = get().tasks.find(t => t.id === taskId)
           if (current && current.status === 'transferring') {
@@ -231,9 +319,8 @@ export function initTransferProgressListener() {
     if (!taskId) return
 
     const active = activeTransfers.get(taskId)
-    
-    // 忽略已取消任务的进度
-    if (!active || active.cancelled) return
+
+    if (!active || active.aborting) return
 
     const { tasks, updateTask } = useTransferStore.getState()
     const task = tasks.find(t => t.id === taskId && t.status === 'transferring')

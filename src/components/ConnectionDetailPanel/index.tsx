@@ -9,6 +9,8 @@ import { useServerStore } from '../../stores/serverStore'
 import type { SystemStats } from '../../types'
 import './index.css'
 
+const statsCache = new Map<string, SystemStats>()
+
 interface ConnectionDetailPanelProps {
   connectionId?: string
   serverName?: string
@@ -26,27 +28,46 @@ const ConnectionDetailPanel: React.FC<ConnectionDetailPanelProps> = ({
 
   const [stats, setStats] = useState<SystemStats | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const fetchingRef = useRef(false)
 
   const isConnected = connection?.status === 'connected'
 
   useEffect(() => {
-    if (!connectionId || !isConnected) {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+
+    if (!connectionId) {
       setStats(null)
+      return
+    }
+
+    const cached = statsCache.get(connectionId) || null
+    setStats(cached)
+
+    if (!isConnected) {
       return
     }
 
     let cancelled = false
 
     const fetchStats = async () => {
+      if (fetchingRef.current) return
+      fetchingRef.current = true
       try {
         const result = await window.electronAPI.sshGetSystemStats(connectionId)
         if (!cancelled && result.success && result.stats) {
+          statsCache.set(connectionId, result.stats)
           setStats(result.stats)
         }
       } catch { /* ignore */ }
+      finally {
+        fetchingRef.current = false
+      }
     }
 
-    fetchStats()
+    void fetchStats()
     timerRef.current = setInterval(fetchStats, 5000)
 
     return () => {
@@ -55,6 +76,7 @@ const ConnectionDetailPanel: React.FC<ConnectionDetailPanelProps> = ({
         clearInterval(timerRef.current)
         timerRef.current = null
       }
+      fetchingRef.current = false
     }
   }, [connectionId, isConnected])
 
