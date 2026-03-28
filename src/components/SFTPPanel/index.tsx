@@ -764,6 +764,12 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       }
     }
 
+    const selectedDeletableItems = remoteFiles.filter(
+      f => selectedRemoteKeys.includes(f.name) && f.name !== '..' && f.name !== '.'
+    )
+    const isDeleteTargetInSelection = selectedRemoteKeys.includes(contextMenuFile.name)
+    const multiSelectedForDelete = isDeleteTargetInSelection && selectedDeletableItems.length > 1
+
     // 复制路径
     const copyPath = (file: FileInfo) => {
       const fullPath = joinRemotePath(remotePath, file.name)
@@ -812,11 +818,15 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       { type: 'divider' },
       {
         key: 'delete',
-        label: '删除',
+        label: multiSelectedForDelete ? `删除选中 (${selectedDeletableItems.length})` : '删除',
         icon: <DeleteOutlined />,
         danger: true,
         onClick: () => {
-          handleDelete(contextMenuFile)
+          if (multiSelectedForDelete) {
+            handleDelete()
+          } else {
+            handleDelete(contextMenuFile)
+          }
           setContextMenuPos(null)
         },
       }
