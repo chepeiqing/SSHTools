@@ -90,20 +90,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ onConnect }) => {
   }
 
   const handleClose = () => {
-    const activeCount = Array.from(connections.values()).filter(c => c.status === 'connected').length
-    modal.confirm({
-      title: '关闭应用',
-      content: activeCount > 0
-        ? `确定要关闭 SSHTools 吗？当前有 ${activeCount} 个活跃的 SSH 连接将会断开。`
-        : '确定要关闭 SSHTools 吗？',
-      okText: '关闭',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      centered: true,
-      onOk: () => {
-        window.electronAPI?.closeWindow()
-      },
-    })
+    window.electronAPI?.closeWindow()
   }
 
   // 搜索结果
