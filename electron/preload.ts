@@ -27,6 +27,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow: () => ipcRenderer.invoke('window-close'),
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
 
+  // 关闭确认（Mac 原生关闭按钮拦截）
+  confirmClose: () => ipcRenderer.invoke('confirm-close'),
+  cancelClose: () => ipcRenderer.invoke('cancel-close'),
+  onRequestCloseConfirmation: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('request-close-confirmation', handler)
+    return () => ipcRenderer.removeListener('request-close-confirmation', handler)
+  },
+
   // 获取平台信息
   getPlatform: () => ipcRenderer.invoke('get-platform'),
 

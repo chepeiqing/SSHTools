@@ -53,11 +53,33 @@ const TitleBar: React.FC<TitleBarProps> = ({ onConnect }) => {
     const unsubMax = window.electronAPI?.onWindowMaximized(() => setIsMaximized(true))
     const unsubUnmax = window.electronAPI?.onWindowUnmaximized(() => setIsMaximized(false))
 
+    // 监听关闭确认请求（Mac 原生关闭按钮触发）
+    const unsubCloseConfirm = window.electronAPI?.onRequestCloseConfirmation(() => {
+      const activeCount = Array.from(connections.values()).filter(c => c.status === 'connected').length
+      modal.confirm({
+        title: '关闭应用',
+        content: activeCount > 0
+          ? `确定要关闭 SSHTools 吗？当前有 ${activeCount} 个活跃的 SSH 连接将会断开。`
+          : '确定要关闭 SSHTools 吗？',
+        okText: '关闭',
+        cancelText: '取消',
+        okButtonProps: { danger: true },
+        centered: true,
+        onOk: () => {
+          window.electronAPI?.confirmClose()
+        },
+        onCancel: () => {
+          window.electronAPI?.cancelClose()
+        },
+      })
+    })
+
     return () => {
       unsubMax?.()
       unsubUnmax?.()
+      unsubCloseConfirm?.()
     }
-  }, [])
+  }, [connections, modal])
 
   const handleMinimize = () => {
     window.electronAPI?.minimizeWindow()

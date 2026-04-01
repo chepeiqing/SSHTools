@@ -12,6 +12,8 @@ const backupStore = new Store({ name: 'server-backup' })
 const windows = new Set<BrowserWindow>()
 // 新窗口初始标签数据
 const pendingTabData = new Map<number, Record<string, unknown>>()
+// 窗口关闭确认状态（用于 Mac 原生关闭按钮拦截）
+const windowCloseConfirmed = new Map<number, boolean>()
 
 function createWindow(): BrowserWindow {
   const isMac = process.platform === 'darwin'
@@ -77,9 +79,20 @@ function createWindow(): BrowserWindow {
     win.webContents.send('window-unmaximized')
   })
 
+  // 窗口关闭确认（拦截关闭事件，询问渲染进程）
+  win.on('close', (event) => {
+    if (windowCloseConfirmed.get(win.id)) return // 已确认关闭，允许通过
+    event.preventDefault() // 阻止关闭
+    // 通知渲染进程显示确认弹窗
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send('request-close-confirmation')
+    }
+  })
+
   // 窗口关闭时清理（提前捕获 webContents 引用，closed 事件时已销毁）
   const wc = win.webContents
   win.on('closed', () => {
+    windowCloseConfirmed.delete(win.id) // 清理关闭确认状态
     sshManager.unregisterWindow(wc)
     windows.delete(win)
     pendingTabData.delete(win.id)
@@ -152,6 +165,23 @@ ipcMain.handle('window-maximize', (event: IpcMainInvokeEvent) => {
 
 ipcMain.handle('window-close', (event: IpcMainInvokeEvent) => {
   BrowserWindow.fromWebContents(event.sender)?.close()
+})
+
+// 关闭确认（用户确认关闭窗口）
+ipcMain.handle('confirm-close', (event: IpcMainInvokeEvent) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) {
+    windowCloseConfirmed.set(win.id, true)
+    win.close()
+  }
+})
+
+// 取消关闭（用户取消关闭窗口）
+ipcMain.handle('cancel-close', (event: IpcMainInvokeEvent) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) {
+    windowCloseConfirmed.delete(win.id)
+  }
 })
 
 ipcMain.handle('window-is-maximized', (event: IpcMainInvokeEvent) => {

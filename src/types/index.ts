@@ -68,6 +68,11 @@ export interface ElectronAPI {
   onWindowMaximized: (callback: () => void) => () => void
   onWindowUnmaximized: (callback: () => void) => () => void
 
+  // 关闭确认（Mac 原生关闭按钮拦截）
+  confirmClose: () => Promise<void>
+  cancelClose: () => Promise<void>
+  onRequestCloseConfirmation: (callback: () => void) => () => void
+
   // 设置同步（跨窗口广播）
   broadcastSettings: (payload: { type: string; data: unknown }) => Promise<void>
   onSettingsSync: (callback: (payload: { type: string; data: unknown }) => void) => () => void

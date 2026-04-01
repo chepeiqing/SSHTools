@@ -1,6 +1,6 @@
 {
   "name": "ssh-tools",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SSH桌面管理工具 - 支持会话管理、SSH终端、SFTP文件传输",
   "author": "车培清",
   "main": "dist-electron/main.js",
