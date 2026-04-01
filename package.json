@@ -6,7 +6,8 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "//build": "打包前自动清理 release 目录，确保输出干净",
+    "build": "node -e \"require('fs').rmSync('release',{recursive:true,force:true})\" && tsc && vite build && electron-builder",
     "build:win": "npm run build -- --win",
     "build:mac": "npm run build -- --mac",
     "build:linux": "npm run build -- --linux",

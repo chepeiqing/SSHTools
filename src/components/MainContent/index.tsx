@@ -1704,7 +1704,7 @@ const HomePage: React.FC<HomePageProps> = ({ onNewSession, onOpenCommands, onOpe
       <div className="home-hero">
         <img src="./icon.svg" alt="SSHTools" className="home-hero-logo" />
         <h1 className="home-title">SSHTools</h1>
-        <p className="home-subtitle">双击服务器卡片快速连接，终端内可通过 <ThunderboltOutlined /> 管理快捷命令</p>
+        <p className="home-subtitle">开源桌面 SSH 管理工具，让远程连接更简单</p>
       </div>
 
       <div className="home-modules">
