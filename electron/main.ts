@@ -277,6 +277,10 @@ ipcMain.handle('sftp-rename', async (_event: IpcMainInvokeEvent, id: string, old
   return await sshManager.rename(id, oldPath, newPath)
 })
 
+ipcMain.handle('sftp-stat', async (_event: IpcMainInvokeEvent, id: string, remotePath: string) => {
+  return await sshManager.stat(id, remotePath)
+})
+
 // 下载文件
 ipcMain.handle('sftp-download', async (event: IpcMainInvokeEvent, id: string, remotePath: string, localPath: string, resume?: boolean, taskId?: string) => {
   const sender = event.sender
@@ -403,6 +407,78 @@ ipcMain.handle('read-file', async (_event: IpcMainInvokeEvent, filePath: string)
   }
 })
 
+ipcMain.handle('local-path-exists', async (_event: IpcMainInvokeEvent, filePath: string) => {
+  if (!filePath || typeof filePath !== 'string' || filePath.includes('\0')) {
+    return { success: false, exists: false, error: '路径无效' }
+  }
+
+  try {
+    const fs = await import('fs/promises')
+    const stat = await fs.stat(filePath)
+    return { success: true, exists: true, isDirectory: stat.isDirectory() }
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException)?.code
+    if (code === 'ENOENT') {
+      return { success: true, exists: false }
+    }
+    return { success: false, exists: false, error: err instanceof Error ? err.message : '检查路径失败' }
+  }
+})
+
+ipcMain.handle('local-expand-upload-paths', async (_event: IpcMainInvokeEvent, inputPaths: string[]) => {
+  if (!Array.isArray(inputPaths) || inputPaths.length === 0) {
+    return { success: false, error: '路径不能为空' }
+  }
+
+  try {
+    const fs = await import('fs/promises')
+    const normalizedRoots = [...new Set(
+      inputPaths
+        .filter((filePath): filePath is string => typeof filePath === 'string' && filePath.length > 0 && !filePath.includes('\0'))
+        .map(filePath => path.resolve(filePath))
+    )]
+
+    const rootSet = new Set(normalizedRoots)
+    const rootPaths = normalizedRoots.filter(root =>
+      !normalizedRoots.some(other => other !== root && root.startsWith(other + path.sep) && rootSet.has(other))
+    )
+
+    const items: Array<{ localPath: string; relativePath: string; isDirectory: boolean }> = []
+
+    const walk = async (absolutePath: string, relativePath: string) => {
+      const stat = await fs.lstat(absolutePath)
+      if (stat.isSymbolicLink()) {
+        return
+      }
+
+      if (stat.isDirectory()) {
+        items.push({ localPath: absolutePath, relativePath, isDirectory: true })
+        const children = await fs.readdir(absolutePath, { withFileTypes: true })
+        for (const child of children) {
+          if (child.isSymbolicLink()) {
+            continue
+          }
+          const childAbsolutePath = path.join(absolutePath, child.name)
+          const childRelativePath = relativePath ? `${relativePath}/${child.name}` : child.name
+          await walk(childAbsolutePath, childRelativePath)
+        }
+        return
+      }
+
+      items.push({ localPath: absolutePath, relativePath, isDirectory: false })
+    }
+
+    for (const rootPath of rootPaths) {
+      const baseName = path.basename(rootPath)
+      await walk(rootPath, baseName)
+    }
+
+    return { success: true, items }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : '展开上传路径失败' }
+  }
+})
+
 // 选择本地文件
 ipcMain.handle('dialog-open-file', async (event: IpcMainInvokeEvent) => {
   const win = BrowserWindow.fromWebContents(event.sender)
@@ -429,6 +505,18 @@ ipcMain.handle('dialog-open-directory', async (event: IpcMainInvokeEvent) => {
   const result = await dialog.showOpenDialog(win, {
     properties: ['openDirectory'],
     title: '选择文件夹',
+  })
+  return result
+})
+
+ipcMain.handle('dialog-open-upload-items', async (event: IpcMainInvokeEvent) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || win.isDestroyed()) {
+    return { canceled: true, filePaths: [] }
+  }
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openFile', 'openDirectory', 'multiSelections'],
+    title: '选择文件或文件夹',
   })
   return result
 })

@@ -64,6 +64,21 @@ const TransferPanel: React.FC = () => {
     }
   }
 
+  const getTaskDisplayInfo = (task: TransferTask) => {
+    const rawName = task.fileName.replace(/\\/g, '/')
+    const isDirectory = /\/$/.test(rawName)
+    const normalizedName = rawName.replace(/\/+$/, '')
+    const segments = normalizedName.split('/').filter(Boolean)
+    const baseName = segments[segments.length - 1] || normalizedName || task.fileName
+    const parentPath = segments.slice(0, -1).join('/')
+
+    return {
+      title: rawName,
+      name: isDirectory ? `${baseName}/` : baseName,
+      parentPath,
+    }
+  }
+
   return (
     <div className="transfer-panel-popover">
       <div className="transfer-panel-header">
@@ -90,80 +105,88 @@ const TransferPanel: React.FC = () => {
         {Object.entries(grouped).map(([serverName, serverTasks]) => (
           <div key={serverName} className="transfer-group">
             <div className="transfer-group-header">{serverName}</div>
-            {serverTasks.map(task => (
-              <div key={task.id} className={`transfer-item ${task.status}`}>
-                <span className="transfer-item-icon">
-                  {task.type === 'upload' ? <UploadOutlined /> : <DownloadOutlined />}
-                </span>
-                <span className="transfer-item-name" title={task.fileName}>{task.fileName}</span>
-                <span className="transfer-item-status">
-                  {task.status === 'pending' && '等待中'}
-                  {task.status === 'paused' && '已暂停'}
-                  {task.status === 'transferring' && (
-                    <>
-                      {task.progress}%
-                      {task.speed && <span className="transfer-speed">{task.speed}</span>}
-                    </>
+            {serverTasks.map(task => {
+              const display = getTaskDisplayInfo(task)
+              return (
+                <div key={task.id} className={`transfer-item ${task.status}`}>
+                  <span className="transfer-item-icon">
+                    {task.type === 'upload' ? <UploadOutlined /> : <DownloadOutlined />}
+                  </span>
+                  <span className="transfer-item-name" title={display.title}>
+                    <span className="transfer-item-name-main">{display.name}</span>
+                    {display.parentPath && (
+                      <span className="transfer-item-name-path">{display.parentPath}</span>
+                    )}
+                  </span>
+                  <span className="transfer-item-status">
+                    {task.status === 'pending' && '等待中'}
+                    {task.status === 'paused' && '已暂停'}
+                    {task.status === 'transferring' && (
+                      <>
+                        {task.progress}%
+                        {task.speed && <span className="transfer-speed">{task.speed}</span>}
+                      </>
+                    )}
+                    {task.status === 'completed' && '已完成'}
+                    {task.status === 'cancelled' && '已取消'}
+                    {task.status === 'failed' && (
+                      <Tooltip title={task.error}><span>失败</span></Tooltip>
+                    )}
+                  </span>
+                  {(task.status === 'transferring' || task.status === 'paused') && (
+                    <div className="transfer-item-progress-bar">
+                      <div className="transfer-item-progress-fill" style={{ width: `${task.progress}%` }} />
+                    </div>
                   )}
-                  {task.status === 'completed' && '已完成'}
-                  {task.status === 'cancelled' && '已取消'}
-                  {task.status === 'failed' && (
-                    <Tooltip title={task.error}><span>失败</span></Tooltip>
-                  )}
-                </span>
-                {(task.status === 'transferring' || task.status === 'paused') && (
-                  <div className="transfer-item-progress-bar">
-                    <div className="transfer-item-progress-fill" style={{ width: `${task.progress}%` }} />
-                  </div>
-                )}
-                <span className="transfer-item-status-icon">{renderStatusIcon(task)}</span>
-                <span className="transfer-item-actions">
-                  {task.status === 'pending' && (
-                    <Button className="transfer-action-btn" size="small" type="text" danger onClick={() => cancelTask(task.id)}>
-                      取消
-                    </Button>
-                  )}
-                  {task.status === 'transferring' && (
-                    <>
-                      <Tooltip title="暂停传输">
-                        <Button className="transfer-action-btn" size="small" type="text" onClick={() => pauseTask(task.id)}>
-                          <PauseCircleOutlined />
-                        </Button>
-                      </Tooltip>
-                      <Tooltip title="取消传输">
-                        <Button className="transfer-action-btn" size="small" type="text" danger onClick={() => cancelTask(task.id)}>
-                          <StopOutlined />
-                        </Button>
-                      </Tooltip>
-                    </>
-                  )}
-                  {task.status === 'paused' && (
-                    <>
-                      <Tooltip title="继续传输">
-                        <Button className="transfer-action-btn" size="small" type="text" onClick={() => resumeTask(task.id)}>
-                          <PlayCircleOutlined />
-                        </Button>
-                      </Tooltip>
-                      <Tooltip title="取消传输">
-                        <Button className="transfer-action-btn" size="small" type="text" danger onClick={() => cancelTask(task.id)}>
-                          <StopOutlined />
-                        </Button>
-                      </Tooltip>
-                    </>
-                  )}
-                  {task.status === 'failed' && (
-                    <Button className="transfer-action-btn" size="small" type="text" onClick={() => retryTask(task.id)}>
-                      重试
-                    </Button>
-                  )}
-                  {task.status === 'cancelled' && (
-                    <Button className="transfer-action-btn" size="small" type="text" onClick={() => retryTask(task.id)}>
-                      重新开始
-                    </Button>
-                  )}
-                </span>
-              </div>
-            ))}
+                  <span className="transfer-item-status-icon">{renderStatusIcon(task)}</span>
+                  <span className="transfer-item-actions">
+                    {task.status === 'pending' && (
+                      <Button className="transfer-action-btn" size="small" type="text" danger onClick={() => cancelTask(task.id)}>
+                        取消
+                      </Button>
+                    )}
+                    {task.status === 'transferring' && (
+                      <>
+                        <Tooltip title="暂停传输">
+                          <Button className="transfer-action-btn" size="small" type="text" onClick={() => pauseTask(task.id)}>
+                            <PauseCircleOutlined />
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title="取消传输">
+                          <Button className="transfer-action-btn" size="small" type="text" danger onClick={() => cancelTask(task.id)}>
+                            <StopOutlined />
+                          </Button>
+                        </Tooltip>
+                      </>
+                    )}
+                    {task.status === 'paused' && (
+                      <>
+                        <Tooltip title="继续传输">
+                          <Button className="transfer-action-btn" size="small" type="text" onClick={() => resumeTask(task.id)}>
+                            <PlayCircleOutlined />
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title="取消传输">
+                          <Button className="transfer-action-btn" size="small" type="text" danger onClick={() => cancelTask(task.id)}>
+                            <StopOutlined />
+                          </Button>
+                        </Tooltip>
+                      </>
+                    )}
+                    {task.status === 'failed' && (
+                      <Button className="transfer-action-btn" size="small" type="text" onClick={() => retryTask(task.id)}>
+                        重试
+                      </Button>
+                    )}
+                    {task.status === 'cancelled' && (
+                      <Button className="transfer-action-btn" size="small" type="text" onClick={() => retryTask(task.id)}>
+                        重新开始
+                      </Button>
+                    )}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         ))}
       </div>

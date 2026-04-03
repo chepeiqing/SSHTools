@@ -67,7 +67,7 @@
 .transfer-panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding-bottom: 4px;
   max-height: 340px;
 }
 
@@ -76,10 +76,11 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
 .transfer-item {
@@ -109,10 +110,25 @@
 .transfer-item-name {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  color: var(--text-color);
+}
+
+.transfer-item-name-main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-color);
+}
+
+.transfer-item-name-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 .transfer-item-status {

@@ -130,6 +130,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 重命名
   sftpRename: (id: string, oldPath: string, newPath: string) => 
     ipcRenderer.invoke('sftp-rename', id, oldPath, newPath),
+  sftpStat: (id: string, remotePath: string) =>
+    ipcRenderer.invoke('sftp-stat', id, remotePath),
 
   // 下载文件
   sftpDownload: (id: string, remotePath: string, localPath: string, resume?: boolean, taskId?: string) =>
@@ -195,12 +197,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 读取本地文件内容
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
+  localPathExists: (filePath: string) => ipcRenderer.invoke('local-path-exists', filePath),
+  localExpandUploadPaths: (paths: string[]) => ipcRenderer.invoke('local-expand-upload-paths', paths),
 
   // 选择文件
   dialogOpenFile: () => ipcRenderer.invoke('dialog-open-file'),
 
   // 选择文件夹
   dialogOpenDirectory: () => ipcRenderer.invoke('dialog-open-directory'),
+  dialogOpenUploadItems: () => ipcRenderer.invoke('dialog-open-upload-items'),
 
   // 保存文件对话框
   dialogSaveFile: (defaultPath?: string) =>

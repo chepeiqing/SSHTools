@@ -22,7 +22,7 @@ import {
 } from '@ant-design/icons'
 import { useConnectionStore, initSFTP, listFiles } from '../../stores/connectionStore'
 import { useTransferStore } from '../../stores/transferStore'
-import type { FileInfo } from '../../types'
+import type { FileInfo, LocalUploadEntry } from '../../types'
 import { Resizable } from 'react-resizable'
 import './index.css'
 import { isBinaryFile } from '../EditorPanel/languages'
@@ -280,61 +280,121 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
     return base === '/' ? `/${safeName}` : `${base}/${safeName}`
   }
 
-  // 添加上传任务到队列（支持批量，检测文件名冲突）
-  const addUploadTasks = (filePaths: string[]) => {
-    const tasks = filePaths.map(filePath => {
-      const fileName = filePath.split(/[/\\]/).pop() || 'file'
-      const remoteFilePath = joinRemotePath(remotePath, fileName)
-      return { filePath, fileName, remotePath: remoteFilePath }
-    })
+  const joinLocalPath = (base: string, name: string): string => {
+    const normalizedBase = base.replace(/[\\/]+$/, '')
+    return normalizedBase ? `${normalizedBase}/${name}` : name
+  }
 
-    const conflicts = tasks
-      .filter(t => remoteFiles.some(f => f.name === t.fileName && f.type === 'file'))
-      .map(t => t.fileName)
+  const buildRemotePathFromRelative = (base: string, relativePath: string): string => (
+    relativePath
+      .split('/')
+      .filter(Boolean)
+      .reduce((currentPath, segment) => joinRemotePath(currentPath, segment), base)
+  )
 
-    const doAdd = () => {
-      const result = addTransferTasks(tasks.map(t => ({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        connectionId: connectionId!,
-        serverName: connection?.serverName || '',
-        type: 'upload' as const,
-        fileName: t.fileName,
-        localPath: t.filePath,
-        remotePath: t.remotePath,
-      })))
-      if (result.skipped > 0) {
-        message.warning(`已跳过 ${result.skipped} 个同名传输任务，目标已在传输队列中`)
+  const handleUploadPaths = async (inputPaths: string[]) => {
+    if (!connectionId || !sftpReady) return
+    if (inputPaths.length === 0) return
+
+    const hidePreparing = message.loading('正在准备上传任务...', 0)
+
+    try {
+      const expandResult = await window.electronAPI.localExpandUploadPaths(inputPaths)
+      if (!expandResult.success || !expandResult.items) {
+        throw new Error(expandResult.error || '展开上传路径失败')
       }
-    }
 
-    if (conflicts.length > 0) {
-      const displayNames = conflicts.length <= 5
-        ? conflicts.join('、')
-        : conflicts.slice(0, 5).join('、') + ` 等 ${conflicts.length} 个文件`
-      modal.confirm({
-        title: '文件已存在',
-        content: `以下文件将被覆盖：${displayNames}`,
-        okText: '覆盖上传',
-        cancelText: '取消',
-        centered: true,
-        onOk: doAdd,
-      })
-    } else {
-      doAdd()
+      const queueItems = expandResult.items.map((item: LocalUploadEntry) => ({
+        fileName: item.isDirectory ? `${item.relativePath}/` : item.relativePath,
+        localPath: item.localPath,
+        remotePath: buildRemotePathFromRelative(remotePath, item.relativePath),
+        isDirectory: item.isDirectory,
+      }))
+
+      if (queueItems.length === 0) {
+        message.warning('没有可上传的内容')
+        return
+      }
+
+      const remoteStates = await Promise.all(queueItems.map(async item => ({
+        item,
+        result: await window.electronAPI.sftpStat(connectionId, item.remotePath),
+      })))
+
+      const remoteStateError = remoteStates.find(({ result }) => !result.success)
+      if (remoteStateError) {
+        throw new Error(remoteStateError.result.error || '检查远端路径状态失败')
+      }
+
+      const invalidTargets = remoteStates
+        .filter(({ item, result }) => result.success && result.info && (
+          (item.isDirectory && result.info.type !== 'folder')
+          || (!item.isDirectory && result.info.type === 'folder')
+        ))
+        .map(({ item, result }) => `${item.fileName}（远端已存在同名${result.info?.type === 'folder' ? '目录' : '文件'}）`)
+
+      if (invalidTargets.length > 0) {
+        const displayNames = invalidTargets.length <= 5
+          ? invalidTargets.join('、')
+          : invalidTargets.slice(0, 5).join('、') + ` 等 ${invalidTargets.length} 项`
+        message.error(`以下远端路径类型冲突，无法上传：${displayNames}`)
+        return
+      }
+
+      const conflicts = remoteStates
+        .filter(({ item, result }) => !item.isDirectory && result.success && result.info && result.info.type !== 'folder')
+        .map(({ item }) => item.fileName)
+
+      const enqueueTasks = () => {
+        const result = addTransferTasks(queueItems.map(item => ({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${item.fileName}`,
+          connectionId,
+          serverName: connection?.serverName || '',
+          type: 'upload' as const,
+          fileName: item.fileName,
+          localPath: item.localPath,
+          remotePath: item.remotePath,
+        })))
+        useTransferStore.getState().setPanelVisible(true)
+        if (result.skipped > 0) {
+          message.warning(`已跳过 ${result.skipped} 个同名传输任务，目标已在传输队列中`)
+        }
+      }
+
+      if (conflicts.length > 0) {
+        const displayNames = conflicts.length <= 5
+          ? conflicts.join('、')
+          : conflicts.slice(0, 5).join('、') + ` 等 ${conflicts.length} 个文件`
+        modal.confirm({
+          title: '文件已存在',
+          content: `以下远端文件将被覆盖：${displayNames}`,
+          okText: '覆盖上传',
+          cancelText: '取消',
+          centered: true,
+          onOk: enqueueTasks,
+        })
+        return
+      }
+
+      enqueueTasks()
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : '准备上传任务失败')
+    } finally {
+      hidePreparing()
     }
   }
 
-  // 选择文件上传
+  // 选择文件或文件夹上传
   const handleSelectUpload = async () => {
     if (!connectionId || !sftpReady) {
       message.warning('SFTP 连接未就绪')
       return
     }
 
-    const result = await window.electronAPI.dialogOpenFile()
+    const result = await window.electronAPI.dialogOpenUploadItems()
     if (result.canceled || result.filePaths.length === 0) return
 
-    addUploadTasks(result.filePaths)
+    await handleUploadPaths(result.filePaths)
   }
 
   // 下载选中的文件
@@ -344,33 +404,24 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       return
     }
 
-    const selectedFiles = remoteFiles.filter(
-      f => selectedRemoteKeys.includes(f.name) && f.type === 'file' && f.name !== '..'
+    const selectedItems = remoteFiles.filter(
+      f => selectedRemoteKeys.includes(f.name) && f.name !== '..'
     )
-    if (selectedFiles.length === 0) {
-      message.warning('请先选择要下载的文件')
+    if (selectedItems.length === 0) {
+      message.warning('请先选择要下载的文件或目录')
       return
     }
 
-    if (selectedFiles.length === 1) {
-      await handleDownloadSingle(selectedFiles[0].name)
-    } else {
-      const result = await window.electronAPI.dialogOpenDirectory()
-      if (result.canceled || result.filePaths.length === 0) return
+    const hasDownloadableItem = selectedItems.some(item => item.type === 'file' || item.type === 'folder')
+    if (!hasDownloadableItem) {
+      message.warning('暂不支持下载符号链接')
+      return
+    }
 
-      const destDir = result.filePaths[0]
-      const queueResult = addTransferTasks(selectedFiles.map(file => ({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`,
-        connectionId: connectionId!,
-        serverName: connection?.serverName || '',
-        type: 'download' as const,
-        fileName: file.name,
-        localPath: `${destDir}/${file.name}`,
-        remotePath: joinRemotePath(remotePath, file.name),
-      })))
-      if (queueResult.skipped > 0) {
-        message.warning(`已跳过 ${queueResult.skipped} 个重复下载任务，目标已在传输队列中`)
-      }
+    if (selectedItems.length === 1 && selectedItems[0].type === 'file') {
+      await handleDownloadSingle(selectedItems[0].name)
+    } else {
+      await handleDownloadBatch(selectedItems)
     }
   }
 
@@ -395,6 +446,147 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
     }])
     if (queueResult.skipped > 0) {
       message.warning('该文件已在传输队列中')
+    }
+  }
+
+  const handleDownloadBatch = async (items: FileInfo[]) => {
+    if (!connectionId || !sftpReady) return
+
+    const result = await window.electronAPI.dialogOpenDirectory()
+    if (result.canceled || result.filePaths.length === 0) return
+
+    const destDir = result.filePaths[0]
+    const hidePreparing = message.loading('正在准备下载任务...', 0)
+
+    try {
+      const queueItems: Array<{
+        fileName: string
+        localPath: string
+        remotePath: string
+        isDirectory: boolean
+      }> = []
+      const skippedLinks: string[] = []
+
+      const collectItems = async (
+        file: FileInfo,
+        currentRemotePath: string,
+        currentLocalPath: string,
+        relativePath: string
+      ) => {
+        if (file.type === 'link') {
+          skippedLinks.push(relativePath)
+          return
+        }
+
+        if (file.type === 'folder') {
+          queueItems.push({
+            fileName: `${relativePath}/`,
+            localPath: currentLocalPath,
+            remotePath: currentRemotePath,
+            isDirectory: true,
+          })
+
+          const listResult = await listFiles(connectionId, currentRemotePath)
+          if (!listResult.success || !listResult.files) {
+            throw new Error(listResult.error || `读取目录失败: ${relativePath}`)
+          }
+
+          for (const child of listResult.files) {
+            if (child.name === '.' || child.name === '..') continue
+            const childRemotePath = joinRemotePath(currentRemotePath, child.name)
+            const childLocalPath = joinLocalPath(currentLocalPath, child.name)
+            const childRelativePath = `${relativePath}/${child.name}`
+            await collectItems(child, childRemotePath, childLocalPath, childRelativePath)
+          }
+          return
+        }
+
+        queueItems.push({
+          fileName: relativePath,
+          localPath: currentLocalPath,
+          remotePath: currentRemotePath,
+          isDirectory: false,
+        })
+      }
+
+      for (const item of items) {
+        if (item.name === '.' || item.name === '..') continue
+        const itemRemotePath = joinRemotePath(remotePath, item.name)
+        const itemLocalPath = joinLocalPath(destDir, item.name)
+        await collectItems(item, itemRemotePath, itemLocalPath, item.name)
+      }
+
+      if (queueItems.length === 0) {
+        message.warning(skippedLinks.length > 0 ? '暂不支持下载符号链接' : '没有可下载的内容')
+        return
+      }
+
+      const pathStates = await Promise.all(queueItems.map(async item => ({
+        item,
+        result: await window.electronAPI.localPathExists(item.localPath),
+      })))
+
+      const pathStateError = pathStates.find(({ result }) => !result.success)
+      if (pathStateError) {
+        throw new Error(pathStateError.result.error || '检查本地路径状态失败')
+      }
+
+      const invalidTargets = pathStates
+        .filter(({ item, result }) => result.success && result.exists && result.isDirectory !== item.isDirectory)
+        .map(({ item, result }) => `${item.fileName}（本地已存在同名${result.isDirectory ? '目录' : '文件'}）`)
+
+      if (invalidTargets.length > 0) {
+        const displayNames = invalidTargets.length <= 5
+          ? invalidTargets.join('、')
+          : invalidTargets.slice(0, 5).join('、') + ` 等 ${invalidTargets.length} 项`
+        message.error(`以下路径类型冲突，无法下载：${displayNames}`)
+        return
+      }
+
+      const conflicts = pathStates
+        .filter(({ item, result }) => !item.isDirectory && result.success && result.exists && !result.isDirectory)
+        .map(({ item }) => item.fileName)
+
+      const enqueueTasks = () => {
+        const queueResult = addTransferTasks(queueItems.map(item => ({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${item.fileName}`,
+          connectionId,
+          serverName: connection?.serverName || '',
+          type: 'download' as const,
+          fileName: item.fileName,
+          localPath: item.localPath,
+          remotePath: item.remotePath,
+        })))
+        useTransferStore.getState().setPanelVisible(true)
+
+        if (queueResult.skipped > 0) {
+          message.warning(`已跳过 ${queueResult.skipped} 个重复下载任务，目标已在传输队列中`)
+        }
+        if (skippedLinks.length > 0) {
+          message.warning(`已跳过 ${skippedLinks.length} 个符号链接，当前暂不支持递归下载链接`)
+        }
+      }
+
+      if (conflicts.length > 0) {
+        const displayNames = conflicts.length <= 5
+          ? conflicts.join('、')
+          : conflicts.slice(0, 5).join('、') + ` 等 ${conflicts.length} 个文件`
+        modal.confirm({
+          title: '文件已存在',
+          content: `以下本地文件将被覆盖：${displayNames}`,
+          okText: '覆盖下载',
+          cancelText: '取消',
+          centered: true,
+          onOk: enqueueTasks,
+        })
+        return
+      }
+
+      enqueueTasks()
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : '准备下载任务失败')
+    } finally {
+      hidePreparing()
     }
   }
 
@@ -674,7 +866,7 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
         { type: 'divider' },
         {
           key: 'upload',
-          label: '上传文件',
+          label: '上传文件/文件夹',
           icon: <UploadOutlined />,
           onClick: () => {
             handleSelectUpload()
@@ -728,30 +920,31 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       })
     }
 
-    if (contextMenuFile.type === 'file') {
-      // 判断是否有多个文件被选中且右键文件在选中范围内
-      const selectedFileItems = remoteFiles.filter(
-        f => selectedRemoteKeys.includes(f.name) && f.type === 'file' && f.name !== '..'
+    if (contextMenuFile.type === 'file' || contextMenuFile.type === 'folder') {
+      const selectedDownloadItems = remoteFiles.filter(
+        f => selectedRemoteKeys.includes(f.name) && (f.type === 'file' || f.type === 'folder') && f.name !== '..'
       )
       const isInSelection = selectedRemoteKeys.includes(contextMenuFile.name)
-      const multiSelected = isInSelection && selectedFileItems.length > 1
+      const multiSelected = isInSelection && selectedDownloadItems.length > 1
 
       items.push({
         key: 'download',
-        label: multiSelected ? `下载选中 (${selectedFileItems.length})` : '下载',
+        label: multiSelected ? `下载选中 (${selectedDownloadItems.length})` : '下载',
         icon: <DownloadOutlined />,
         onClick: () => {
           if (multiSelected) {
             handleDownload()
+          } else if (contextMenuFile.type === 'folder') {
+            void handleDownloadBatch([contextMenuFile])
           } else {
-            handleDownloadSingle(contextMenuFile.name)
+            void handleDownloadSingle(contextMenuFile.name)
           }
           setContextMenuPos(null)
         },
       })
 
       // 文本文件可编辑
-      if (onOpenFile && !isBinaryFile(contextMenuFile.name)) {
+      if (contextMenuFile.type === 'file' && onOpenFile && !isBinaryFile(contextMenuFile.name)) {
         items.push({
           key: 'edit',
           label: '编辑',
@@ -808,7 +1001,7 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       { type: 'divider' },
       {
         key: 'upload',
-        label: '上传文件',
+        label: '上传文件/文件夹',
         icon: <UploadOutlined />,
         onClick: () => {
           handleSelectUpload()
@@ -938,21 +1131,27 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       return
     }
 
-    const files = e.dataTransfer.files
-    if (files.length === 0) return
+    const pathSet = new Set<string>()
 
-    const filePaths: string[] = []
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      const filePath = (file as File & { path?: string }).path
-      if (!filePath) {
-        message.warning(`无法获取文件 "${file.name}" 的路径`)
-        continue
+    for (const item of Array.from(e.dataTransfer.items)) {
+      const file = item.getAsFile() as (File & { path?: string }) | null
+      if (file?.path) {
+        pathSet.add(file.path)
       }
-      filePaths.push(filePath)
     }
-    if (filePaths.length > 0) {
-      addUploadTasks(filePaths)
+
+    const files = e.dataTransfer.files
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i] as File & { path?: string }
+      if (file.path) {
+        pathSet.add(file.path)
+      } else {
+        message.warning(`无法获取项目 "${file.name}" 的路径`)
+      }
+    }
+
+    if (pathSet.size > 0) {
+      void handleUploadPaths([...pathSet])
     }
   }
 
@@ -1141,14 +1340,14 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
               type={showHidden ? 'primary' : 'default'}
             />
           </Tooltip>
-          <Tooltip title="上传文件">
+          <Tooltip title="上传文件/文件夹">
             <Button
               icon={<UploadOutlined />}
               size="small"
               onClick={handleSelectUpload}
             />
           </Tooltip>
-          <Tooltip title="下载选中文件">
+          <Tooltip title="下载选中内容">
             <Button
               icon={<DownloadOutlined />}
               size="small"
@@ -1186,7 +1385,7 @@ const SFTPPanel: React.FC<SFTPPanelProps> = ({ connectionId, initialPath, navSeq
       {isDragging && (
         <div className="drag-hint">
           <DragOutlined style={{ fontSize: 32 }} />
-          <span>拖放文件到这里上传</span>
+          <span>拖放文件或文件夹到这里上传</span>
         </div>
       )}
 

@@ -81,6 +81,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const isConnectedRef = useRef(false)
   const reconnectableRef = useRef(false)
   const reconnectPendingRef = useRef(false)
+  const needsSessionResetRef = useRef(false)
   const onReconnectRef = useRef(onReconnect)
   const wordWrapRef = useRef(wordWrap)
   const addCommandRef = useRef<(serverId: string, command: string) => void>(() => {})
@@ -473,6 +474,8 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
       if (data.id === connectionId) {
         // 更新 store 状态为断开，使 isConnectedRef 在下次渲染时变为 false
         useConnectionStore.getState().updateConnection(connectionId, { status: 'disconnected' })
+        needsSessionResetRef.current = true
+        inputBufferRef.current = ''
         if (terminalInstance.current) {
           terminalInstance.current.writeln('')
           terminalInstance.current.writeln('\x1b[33m── 连接已断开 ──\x1b[0m')
@@ -484,6 +487,8 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     const handleSSHError = (data: { id: string; error: string }) => {
       if (data.id === connectionId) {
         useConnectionStore.getState().updateConnection(connectionId, { status: 'error', error: data.error })
+        needsSessionResetRef.current = true
+        inputBufferRef.current = ''
         if (terminalInstance.current) {
           terminalInstance.current.writeln('')
           terminalInstance.current.writeln(`\x1b[31m── 连接错误: ${data.error} ──\x1b[0m`)
@@ -510,18 +515,36 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         if (!result.success) {
           terminalInstance.current?.writeln(`\x1b[31m启动 Shell 失败: ${result.error}\x1b[0m`)
         } else {
+          const shouldResetForNewSession = !result.reused && needsSessionResetRef.current
+
+          if (terminalInstance.current && (result.reused || shouldResetForNewSession)) {
+            terminalInstance.current.reset()
+          }
+          if (shouldResetForNewSession && terminalInstance.current) {
+            terminalInstance.current.writeln('\x1b[36m── 已重新连接，新的终端会话已建立 ──\x1b[0m')
+            terminalInstance.current.writeln('')
+          }
+          if (shouldResetForNewSession) {
+            needsSessionResetRef.current = false
+            inputBufferRef.current = ''
+          }
+
           // 显示连接成功提示
           if (terminalInstance.current && !result.reused) {
             terminalInstance.current.writeln(`\x1b[32m  连接成功\x1b[0m`)
             terminalInstance.current.writeln('')
           }
           if (terminalInstance.current && result.buffer) {
-            if (result.reused) {
-              // 跨窗口迁移：清除欢迎信息，完整回放缓冲区
-              terminalInstance.current.reset()
-            }
             // 写入初始输出（SSH banner + MOTD + Last login 等）
             terminalInstance.current.write(result.buffer)
+          }
+          if (terminalInstance.current) {
+            requestAnimationFrame(() => {
+              terminalInstance.current?.scrollToBottom()
+              if (isActive) {
+                terminalInstance.current?.focus()
+              }
+            })
           }
           if (fitAddonRef.current) {
             const dims = fitAddonRef.current.proposeDimensions()
@@ -543,6 +566,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     container.classList.toggle('terminal-container-disconnected', isDisconnected)
 
     if (isDisconnected) {
+      needsSessionResetRef.current = true
       term.blur()
       disconnectedOverlayRef.current?.focus()
       return

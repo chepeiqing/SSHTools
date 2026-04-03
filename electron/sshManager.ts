@@ -167,6 +167,48 @@ class SSHManager {
     return null
   }
 
+  private sftpStatAsync(sftp: SFTPWrapper, remotePath: string): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      sftp.stat(remotePath, (err, stats) => {
+        if (!err) {
+          resolve(stats)
+          return
+        }
+
+        const code = (err as NodeJS.ErrnoException).code
+        if (code === 2 || code === 'ENOENT') {
+          resolve(null)
+          return
+        }
+
+        reject(err)
+      })
+    })
+  }
+
+  private async ensureRemoteDirectory(sftp: SFTPWrapper, remoteDirPath: string): Promise<void> {
+    if (!remoteDirPath || remoteDirPath === '/' || remoteDirPath === '.') return
+
+    const normalizedPath = remoteDirPath.replace(/\/+/g, '/')
+    const segments = normalizedPath.split('/').filter(Boolean)
+    let currentPath = normalizedPath.startsWith('/') ? '/' : ''
+
+    for (const segment of segments) {
+      currentPath = currentPath === '/' ? `/${segment}` : (currentPath ? `${currentPath}/${segment}` : segment)
+      const existing = await this.sftpStatAsync(sftp, currentPath)
+      if (existing) {
+        if (typeof existing.isDirectory === 'function' && existing.isDirectory()) {
+          continue
+        }
+        throw new Error(`远程路径已存在且不是目录: ${currentPath}`)
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        sftp.mkdir(currentPath, (err) => err ? reject(err) : resolve())
+      })
+    }
+  }
+
   // 建立 SSH 连接
   connect(config: SSHConnectionConfig, sender?: WebContents): Promise<{ success: boolean; error?: string }> {
     return new Promise((resolve) => {
@@ -680,9 +722,6 @@ class SSHManager {
     resume?: boolean,
     taskId?: string
   ): Promise<{ success: boolean; error?: string }> {
-    // 生成临时文件路径：在原文件名后加 .part
-    const tempPath = localPath + '.part'
-
     try {
       const pathError = this.validateRemotePath(remotePath)
       if (pathError) return { success: false, error: pathError }
@@ -693,14 +732,22 @@ class SSHManager {
       const sftp = this.sftpConnections.get(id)
       if (!sftp) return { success: false, error: 'SFTP 连接不存在' }
 
+      // 生成临时文件路径：在原文件名后加 .part
+      const tempPath = localPath + '.part'
       let startOffset = 0
       let totalSize = 0
 
       try {
-        const remoteStat = await new Promise<{ size: number }>((res, rej) => {
-          sftp.stat(remotePath, (err, stats) => err ? rej(err) : res(stats as unknown as { size: number }))
+        const remoteStat = await new Promise<any>((res, rej) => {
+          sftp.stat(remotePath, (err, stats) => err ? rej(err) : res(stats))
         })
+        if (typeof remoteStat.isDirectory === 'function' && remoteStat.isDirectory()) {
+          fs.mkdirSync(localPath, { recursive: true })
+          return { success: true }
+        }
+
         totalSize = remoteStat.size
+        fs.mkdirSync(path.dirname(localPath), { recursive: true })
 
         if (resume) {
           try {
@@ -838,9 +885,6 @@ class SSHManager {
     resume?: boolean,
     taskId?: string
   ): Promise<{ success: boolean; error?: string }> {
-    // 生成临时文件路径：在原文件名后加 .part
-    const tempPath = remotePath + '.part'
-
     try {
       const pathError = this.validateRemotePath(remotePath)
       if (pathError) return { success: false, error: pathError }
@@ -851,12 +895,20 @@ class SSHManager {
       const sftp = this.sftpConnections.get(id)
       if (!sftp) return { success: false, error: 'SFTP 连接不存在' }
 
+      // 生成临时文件路径：在原文件名后加 .part
+      const tempPath = remotePath + '.part'
       let startOffset = 0
       let totalSize = 0
 
       try {
         const localStat = await fsStat(localPath)
+        if (localStat.isDirectory()) {
+          await this.ensureRemoteDirectory(sftp, remotePath)
+          return { success: true }
+        }
+
         totalSize = localStat.size
+        await this.ensureRemoteDirectory(sftp, path.posix.dirname(remotePath))
 
         if (resume) {
           // 检查临时文件是否存在（断点续传）
@@ -1061,6 +1113,11 @@ class SSHManager {
 
       sftp.stat(remotePath, (err, stats) => {
         if (err) {
+          const code = (err as NodeJS.ErrnoException).code
+          if (code === 2 || code === 'ENOENT') {
+            resolve({ success: true })
+            return
+          }
           resolve({ success: false, error: err.message })
           return
         }

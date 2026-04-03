@@ -31,6 +31,12 @@ export interface TransferProgress {
   total: number
 }
 
+export interface LocalUploadEntry {
+  localPath: string
+  relativePath: string
+  isDirectory: boolean
+}
+
 // 系统监控信息
 export interface SystemStats {
   cpuUsage: number
@@ -98,6 +104,7 @@ export interface ElectronAPI {
   sftpMkdir: (id: string, remotePath: string) => Promise<{ success: boolean; error?: string }>
   sftpDelete: (id: string, remotePath: string, isDirectory: boolean) => Promise<{ success: boolean; error?: string }>
   sftpRename: (id: string, oldPath: string, newPath: string) => Promise<{ success: boolean; error?: string }>
+  sftpStat: (id: string, remotePath: string) => Promise<{ success: boolean; info?: FileInfo; error?: string }>
   sftpDownload: (id: string, remotePath: string, localPath: string, resume?: boolean, taskId?: string) => Promise<{ success: boolean; error?: string }>
   sftpUpload: (id: string, localPath: string, remotePath: string, resume?: boolean, taskId?: string) => Promise<{ success: boolean; error?: string }>
   sftpAbort: (taskId: string, action?: 'pause' | 'cancel') => Promise<{ success: boolean }>
@@ -126,10 +133,13 @@ export interface ElectronAPI {
   // 对话框
   dialogOpenFile: () => Promise<{ canceled: boolean; filePaths: string[] }>
   dialogOpenDirectory: () => Promise<{ canceled: boolean; filePaths: string[] }>
+  dialogOpenUploadItems: () => Promise<{ canceled: boolean; filePaths: string[] }>
   dialogSaveFile: (defaultPath?: string) => Promise<{ canceled: boolean; filePath?: string }>
 
   // 文件读取
   readFile: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
+  localPathExists: (filePath: string) => Promise<{ success: boolean; exists: boolean; isDirectory?: boolean; error?: string }>
+  localExpandUploadPaths: (paths: string[]) => Promise<{ success: boolean; items?: LocalUploadEntry[]; error?: string }>
 
   // 凭据安全存储
   credentialsSave: (serverId: string, credentials: { password?: string; privateKey?: string; passphrase?: string }) => Promise<{ success: boolean; error?: string }>
