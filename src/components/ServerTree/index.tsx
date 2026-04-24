@@ -9,10 +9,10 @@ import {
   CopyOutlined,
   FolderOutlined,
 } from '@ant-design/icons'
-import type { MenuProps, TreeDataNode } from 'antd'
+import type { MenuProps, TreeDataNode, TreeProps } from 'antd'
 import { useServerStore, type ServerConfig } from '../../stores/serverStore'
 import { useConnectionStore } from '../../stores/connectionStore'
-import { onOpenNewSession } from '../SessionManager'
+import { onOpenNewSession } from '../SessionManager/events'
 import NewSessionModal from '../SessionManager/NewSessionModal'
 import './index.css'
 
@@ -23,6 +23,10 @@ interface ServerTreeProps {
   searchKeyword?: string
   listenNewSession?: boolean
 }
+
+type AllowDropInfo = Parameters<NonNullable<TreeProps['allowDrop']>>[0]
+type DropInfo = Parameters<NonNullable<TreeProps['onDrop']>>[0]
+type SwitcherIconProps = { isLeaf?: boolean }
 
 const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetail, searchKeyword, listenNewSession }) => {
   const [newSessionVisible, setNewSessionVisible] = useState(false)
@@ -255,7 +259,7 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
   }
 
   // 拖拽：允许放置的判断
-  const handleAllowDrop = (info: any) => {
+  const handleAllowDrop = (info: AllowDropInfo) => {
     const dragKey = String(info.dragNode.key)
     const dropKey = String(info.dropNode.key)
     const isDraggingServer = !dragKey.startsWith('group-')
@@ -276,7 +280,7 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
   }
 
   // 拖拽：放置处理
-  const handleDrop = (info: any) => {
+  const handleDrop = (info: DropInfo) => {
     const dragKey = String(info.dragNode.key)
     const dropKey = String(info.node.key)
     const dropPos = String(info.node.pos).split('-')
@@ -346,7 +350,8 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
       { key: 'copy', label: '复制', icon: <CopyOutlined />, onClick: () => {
         if (server) {
           // 以新建模式打开，回显除 id 外的所有数据，名称加 " (副本)"
-          const { id: _id, ...rest } = server
+          const { id, ...rest } = server
+          void id
           setEditingServer(null)
           setCopyData({ ...rest, name: `${server.name} (副本)` })
           setDefaultGroupId(undefined)
@@ -478,7 +483,7 @@ const ServerTree: React.FC<ServerTreeProps> = ({ onConnect, className, showDetai
             onExpand={setExpandedKeys}
             className="session-tree"
             selectedKeys={selectedNode ? [selectedNode] : []}
-            switcherIcon={(nodeProps: any) => nodeProps.isLeaf ? <span style={{ display: 'none' }} /> : undefined}
+            switcherIcon={(nodeProps: SwitcherIconProps) => nodeProps.isLeaf ? <span style={{ display: 'none' }} /> : undefined}
           />
         </div>
       </Dropdown>

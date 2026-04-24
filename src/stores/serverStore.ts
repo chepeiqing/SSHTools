@@ -53,10 +53,17 @@ interface ServerState {
 
 // 防抖备份到 electron-store（不含密码）
 let _backupTimer: ReturnType<typeof setTimeout> | null = null
+function stripSensitiveFields(server: ServerConfig): Omit<ServerConfig, 'password' | 'privateKey' | 'passphrase'> {
+  const safeServer = { ...server }
+  delete safeServer.password
+  delete safeServer.privateKey
+  delete safeServer.passphrase
+  return safeServer
+}
 function backupDebounced(servers: ServerConfig[], groups: ServerGroup[]) {
   if (_backupTimer) clearTimeout(_backupTimer)
   _backupTimer = setTimeout(() => {
-    const safeServers = servers.map(({ password: _p, privateKey: _k, passphrase: _ph, ...rest }) => rest)
+    const safeServers = servers.map(stripSensitiveFields)
     window.electronAPI?.backupServers({ servers: safeServers as unknown as Record<string, unknown>[], groups: groups as unknown as Record<string, unknown>[] })
   }, 1000)
 }
@@ -418,10 +425,7 @@ export const useServerStore = create<ServerState>()(
       name: 'ssh-tools-servers',
       // 持久化到 localStorage 时剥离敏感字段
       partialize: (state) => ({
-        servers: state.servers.map((s: ServerConfig) => {
-          const { password: _p, privateKey: _k, passphrase: _ph, ...safe } = s
-          return safe
-        }),
+        servers: state.servers.map(stripSensitiveFields),
         groups: state.groups,
         activeServerId: state.activeServerId,
       } as unknown as ServerState),

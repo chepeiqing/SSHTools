@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { Tabs, Button, Dropdown, App, Input, Modal, Checkbox } from 'antd'
 import {
   PlusOutlined,
@@ -20,21 +20,22 @@ import {
   SwapOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
-import TerminalPanel from '../TerminalPanel'
-import SFTPPanel from '../SFTPPanel'
-import ConnectionDetailPanel from '../ConnectionDetailPanel'
-import EditorPanel from '../EditorPanel'
-import NewSessionModal from '../SessionManager/NewSessionModal'
-import CommandsPanel from '../CommandsPanel'
-import DocPanel from '../DocPanel'
-import ServerListPanel from '../ServerListModal'
 import { useConnectionStore, connectServer, disconnectServer } from '../../stores/connectionStore'
 import { useServerStore } from '../../stores/serverStore'
-import { onSessionConnect } from '../SessionManager'
-import { useSettingsModal } from '../SettingsModal'
-import TransferPanel from '../TransferPanel'
+import { onSessionConnect } from '../SessionManager/events'
+import { useSettingsModal } from '../SettingsModal/store'
 import { useTransferStore, initTransferProgressListener } from '../../stores/transferStore'
 import './index.css'
+
+const TerminalPanel = lazy(() => import('../TerminalPanel'))
+const SFTPPanel = lazy(() => import('../SFTPPanel'))
+const ConnectionDetailPanel = lazy(() => import('../ConnectionDetailPanel'))
+const EditorPanel = lazy(() => import('../EditorPanel'))
+const NewSessionModal = lazy(() => import('../SessionManager/NewSessionModal'))
+const CommandsPanel = lazy(() => import('../CommandsPanel'))
+const DocPanel = lazy(() => import('../DocPanel'))
+const ServerListPanel = lazy(() => import('../ServerListModal'))
+const TransferPanel = lazy(() => import('../TransferPanel'))
 
 // 序列化标签数据（用于跨窗口传输）
 interface SerializedTab {
@@ -69,6 +70,21 @@ interface TabItem {
 }
 
 const HOME_TAB_KEY = '__home__'
+
+const LazyPanelFallback: React.FC<{ compact?: boolean }> = ({ compact = false }) => (
+  <div
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100%',
+      minHeight: compact ? 120 : 180,
+      color: 'var(--text-secondary)',
+    }}
+  >
+    正在加载...
+  </div>
+)
 
 // 从跨窗口传输的数据反序列化为 TabItem
 function deserializeTab(tabData: Record<string, unknown>): TabItem {
@@ -1371,23 +1387,31 @@ const MainContent: React.FC = () => {
     children: tab.type === 'home' ? (
       <HomePage onNewSession={() => setNewSessionVisible(true)} onOpenCommands={openCommandsTab} onOpenDoc={openDocTab} onOpenServerList={openServerListTab} />
     ) : tab.type === 'serverList' ? (
-      <ServerListPanel onConnect={(serverId) => { removeServerListTab(); connectAndCreateTab(serverId) }} />
+      <Suspense fallback={<LazyPanelFallback compact />}>
+        <ServerListPanel onConnect={(serverId) => { removeServerListTab(); connectAndCreateTab(serverId) }} />
+      </Suspense>
     ) : tab.type === 'commands' ? (
-      <CommandsPanel />
+      <Suspense fallback={<LazyPanelFallback compact />}>
+        <CommandsPanel />
+      </Suspense>
     ) : tab.type === 'doc' ? (
-      <DocPanel />
+      <Suspense fallback={<LazyPanelFallback compact />}>
+        <DocPanel />
+      </Suspense>
     ) : tab.type === 'editor' ? (
-      <EditorPanel
-        connectionId={tab.connectionId!}
-        remotePath={tab.editorRemotePath!}
-        fileName={tab.editorFileName!}
-        serverName={tab.serverName || ''}
-        onDirty={(dirty) => {
-          setTabs(prev => prev.map(t =>
-            t.key === tab.key ? { ...t, editorDirty: dirty } : t
-          ))
-        }}
-      />
+      <Suspense fallback={<LazyPanelFallback />}>
+        <EditorPanel
+          connectionId={tab.connectionId!}
+          remotePath={tab.editorRemotePath!}
+          fileName={tab.editorFileName!}
+          serverName={tab.serverName || ''}
+          onDirty={(dirty) => {
+            setTabs(prev => prev.map(t =>
+              t.key === tab.key ? { ...t, editorDirty: dirty } : t
+            ))
+          }}
+        />
+      </Suspense>
     ) : (
       <SessionTabContent
         tab={tab}
@@ -1410,10 +1434,12 @@ const MainContent: React.FC = () => {
       {activeTab && (
         <DetailPanelResizer width={detailPanelWidth} onWidthChange={setDetailPanelWidth} visible={showDetailPanel} position="left">
           {activeTab?.type === 'terminal' ? (
-            <ConnectionDetailPanel
-              connectionId={activeTab.connectionId}
-              serverName={activeTab.serverName}
-            />
+            <Suspense fallback={<LazyPanelFallback compact />}>
+              <ConnectionDetailPanel
+                connectionId={activeTab.connectionId}
+                serverName={activeTab.serverName}
+              />
+            </Suspense>
           ) : canShowDetailPanel ? (
             <HomeSidebar
               onNewSession={() => setNewSessionVisible(true)}
@@ -1475,7 +1501,9 @@ const MainContent: React.FC = () => {
                   </span>
                 )}
               </Button>
-              <TransferPanel />
+              <Suspense fallback={null}>
+                <TransferPanel />
+              </Suspense>
             </div>
           ),
         }}
@@ -1592,7 +1620,8 @@ const MainContent: React.FC = () => {
       </Modal>
 
       {/* 新建会话弹窗 */}
-      <NewSessionModal
+      <Suspense fallback={null}>
+        <NewSessionModal
         visible={newSessionVisible}
         onClose={() => setNewSessionVisible(false)}
         onOk={(values) => {
@@ -1600,7 +1629,8 @@ const MainContent: React.FC = () => {
           message.success('会话创建成功')
           setNewSessionVisible(false)
         }}
-      />
+        />
+      </Suspense>
 
     </div>
   )
@@ -1870,16 +1900,18 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
     <div ref={containerRef} className="session-tab-content">
       {/* 终端面板 */}
       <div className="terminal-wrapper" style={sftpReady ? { height: `calc(100% - ${tab.sftpHeight}px - 5px)`, flex: 'none' } : undefined}>
-        <TerminalPanel
-          connectionId={tab.connectionId}
-          serverId={tab.serverId}
-          connectionStatus={tab.status}
-          isActive={isActive}
-          sftpVisible={tab.sftpVisible}
-          onToggleSFTP={onToggleSFTP}
-          onReconnect={onReconnect}
-          serverConfig={server ? { host: server.host, port: server.port, username: server.username } : undefined}
-        />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <TerminalPanel
+            connectionId={tab.connectionId}
+            serverId={tab.serverId}
+            connectionStatus={tab.status}
+            isActive={isActive}
+            sftpVisible={tab.sftpVisible}
+            onToggleSFTP={onToggleSFTP}
+            onReconnect={onReconnect}
+            serverConfig={server ? { host: server.host, port: server.port, username: server.username } : undefined}
+          />
+        </Suspense>
       </div>
 
       {/* SFTP 面板 */}
@@ -1894,12 +1926,14 @@ const SessionTabContent: React.FC<SessionTabContentProps> = ({
 
           {/* SFTP 内容 */}
           <div className="sftp-wrapper" style={{ height: tab.sftpHeight }}>
-            <SFTPPanel
-              connectionId={tab.connectionId}
-              initialPath={tab.sftpPath}
-              navSeq={tab.sftpNavSeq}
-              onOpenFile={onOpenFile}
-            />
+            <Suspense fallback={<LazyPanelFallback compact />}>
+              <SFTPPanel
+                connectionId={tab.connectionId}
+                initialPath={tab.sftpPath}
+                navSeq={tab.sftpNavSeq}
+                onOpenFile={onOpenFile}
+              />
+            </Suspense>
           </div>
         </>
       )}

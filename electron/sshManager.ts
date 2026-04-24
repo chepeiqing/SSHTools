@@ -42,6 +42,21 @@ export interface SystemStats {
   topProcesses: { pid: string; user: string; cpu: string; mem: string; command: string; fullCommand: string }[]
 }
 
+interface SFTPStatsLike {
+  size: number
+  uid: number
+  gid: number
+  mode: number
+  mtime: number
+  isDirectory?: () => boolean
+  isSymbolicLink?: () => boolean
+}
+
+interface SFTPDirectoryEntry {
+  filename: string
+  attrs: SFTPStatsLike
+}
+
 // 活跃传输（用于取消）
 interface ActiveTransfer {
   aborted: boolean
@@ -62,6 +77,8 @@ class SSHManager {
   private connectionTargets: Map<string, WebContents> = new Map()
   // 活跃传输（taskId -> ActiveTransfer）
   private activeTransfers: Map<string, ActiveTransfer> = new Map()
+  // 正在创建的远端目录（connectionId:path -> promise），避免批量上传时重复 mkdir 竞争
+  private pendingRemoteDirectories: Map<string, Promise<void>> = new Map()
   // 所有已注册的窗口（用于广播）
   private windowRegistry: Set<WebContents> = new Set()
   // 临时屏蔽 shell 输出转发到终端（获取 CWD 时使用）
@@ -167,11 +184,11 @@ class SSHManager {
     return null
   }
 
-  private sftpStatAsync(sftp: SFTPWrapper, remotePath: string): Promise<any | null> {
+  private sftpStatAsync(sftp: SFTPWrapper, remotePath: string): Promise<SFTPStatsLike | null> {
     return new Promise((resolve, reject) => {
       sftp.stat(remotePath, (err, stats) => {
         if (!err) {
-          resolve(stats)
+          resolve(stats as SFTPStatsLike)
           return
         }
 
@@ -186,7 +203,111 @@ class SSHManager {
     })
   }
 
-  private async ensureRemoteDirectory(sftp: SFTPWrapper, remoteDirPath: string): Promise<void> {
+  private sftpReaddirAsync(sftp: SFTPWrapper, remotePath: string): Promise<SFTPDirectoryEntry[]> {
+    return new Promise((resolve, reject) => {
+      sftp.readdir(remotePath, (err, list) => {
+        if (err) {
+          reject(err)
+          return
+        }
+        resolve((list || []) as SFTPDirectoryEntry[])
+      })
+    })
+  }
+
+  private sftpUnlinkAsync(sftp: SFTPWrapper, remotePath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      sftp.unlink(remotePath, (err) => err ? reject(err) : resolve())
+    })
+  }
+
+  private sftpRmdirAsync(sftp: SFTPWrapper, remotePath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      sftp.rmdir(remotePath, (err) => err ? reject(err) : resolve())
+    })
+  }
+
+  private joinRemotePath(base: string, name: string): string {
+    const safeName = name.replace(/[/\\\0]/g, '')
+    if (!safeName) return base
+    return base === '/' ? `/${safeName}` : `${base}/${safeName}`
+  }
+
+  private async deleteRemoteDirectoryRecursive(sftp: SFTPWrapper, remotePath: string): Promise<void> {
+    const children = await this.sftpReaddirAsync(sftp, remotePath)
+
+    for (const child of children) {
+      const childName = typeof child.filename === 'string' ? child.filename : ''
+      if (!childName || childName === '.' || childName === '..') {
+        continue
+      }
+
+      const childPath = this.joinRemotePath(remotePath, childName)
+      let isDirectory = false
+      let isSymbolicLink = false
+
+      try {
+        isDirectory = typeof child.attrs?.isDirectory === 'function' && child.attrs.isDirectory()
+        isSymbolicLink = typeof child.attrs?.isSymbolicLink === 'function' && child.attrs.isSymbolicLink()
+      } catch {
+        isDirectory = false
+        isSymbolicLink = false
+      }
+
+      if (isDirectory && !isSymbolicLink) {
+        await this.deleteRemoteDirectoryRecursive(sftp, childPath)
+      } else {
+        await this.sftpUnlinkAsync(sftp, childPath)
+      }
+    }
+
+    await this.sftpRmdirAsync(sftp, remotePath)
+  }
+
+  private async ensureRemoteDirectorySegment(id: string, sftp: SFTPWrapper, remoteDirPath: string): Promise<void> {
+    const normalizedPath = remoteDirPath.replace(/\/+/g, '/')
+    const key = `${id}:${normalizedPath}`
+    const existingPromise = this.pendingRemoteDirectories.get(key)
+    if (existingPromise) {
+      await existingPromise
+      return
+    }
+
+    const pendingPromise = (async () => {
+      const existing = await this.sftpStatAsync(sftp, normalizedPath)
+      if (existing) {
+        if (typeof existing.isDirectory === 'function' && existing.isDirectory()) {
+          return
+        }
+        throw new Error(`远程路径已存在且不是目录: ${normalizedPath}`)
+      }
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          sftp.mkdir(normalizedPath, (err) => err ? reject(err) : resolve())
+        })
+      } catch (err) {
+        // 并发上传时，目录可能在当前 mkdir 失败前已被其他任务创建；复查后存在即视为成功。
+        const existingAfter = await this.sftpStatAsync(sftp, normalizedPath)
+        if (existingAfter) {
+          if (typeof existingAfter.isDirectory === 'function' && existingAfter.isDirectory()) {
+            return
+          }
+          throw new Error(`远程路径已存在且不是目录: ${normalizedPath}`)
+        }
+        throw err
+      }
+    })().finally(() => {
+      if (this.pendingRemoteDirectories.get(key) === pendingPromise) {
+        this.pendingRemoteDirectories.delete(key)
+      }
+    })
+
+    this.pendingRemoteDirectories.set(key, pendingPromise)
+    await pendingPromise
+  }
+
+  private async ensureRemoteDirectory(id: string, sftp: SFTPWrapper, remoteDirPath: string): Promise<void> {
     if (!remoteDirPath || remoteDirPath === '/' || remoteDirPath === '.') return
 
     const normalizedPath = remoteDirPath.replace(/\/+/g, '/')
@@ -195,17 +316,7 @@ class SSHManager {
 
     for (const segment of segments) {
       currentPath = currentPath === '/' ? `/${segment}` : (currentPath ? `${currentPath}/${segment}` : segment)
-      const existing = await this.sftpStatAsync(sftp, currentPath)
-      if (existing) {
-        if (typeof existing.isDirectory === 'function' && existing.isDirectory()) {
-          continue
-        }
-        throw new Error(`远程路径已存在且不是目录: ${currentPath}`)
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        sftp.mkdir(currentPath, (err) => err ? reject(err) : resolve())
-      })
+      await this.ensureRemoteDirectorySegment(id, sftp, currentPath)
     }
   }
 
@@ -603,8 +714,8 @@ class SSHManager {
         const files: FileInfo[] = list.map((item) => {
           let fileType: 'file' | 'folder' | 'link' = 'file'
           try {
-            const isDirectory = (item.attrs as any).isDirectory()
-            const isSymbolicLink = (item.attrs as any).isSymbolicLink()
+          const isDirectory = typeof item.attrs.isDirectory === 'function' && item.attrs.isDirectory()
+          const isSymbolicLink = typeof item.attrs.isSymbolicLink === 'function' && item.attrs.isSymbolicLink()
             fileType = isSymbolicLink ? 'link' : isDirectory ? 'folder' : 'file'
           } catch {
             // attrs 方法不存在时回退为 file
@@ -662,29 +773,27 @@ class SSHManager {
   }
 
   // 删除文件或目录
-  delete(id: string, remotePath: string, isDirectory: boolean): Promise<{ success: boolean; error?: string }> {
-    return new Promise((resolve) => {
-      const pathError = this.validateRemotePath(remotePath)
-      if (pathError) {
-        resolve({ success: false, error: pathError })
-        return
-      }
+  async delete(id: string, remotePath: string, isDirectory: boolean): Promise<{ success: boolean; error?: string }> {
+    const pathError = this.validateRemotePath(remotePath)
+    if (pathError) {
+      return { success: false, error: pathError }
+    }
 
-      const sftp = this.sftpConnections.get(id)
-      if (!sftp) {
-        resolve({ success: false, error: 'SFTP 连接不存在' })
-        return
-      }
+    const sftp = this.sftpConnections.get(id)
+    if (!sftp) {
+      return { success: false, error: 'SFTP 连接不存在' }
+    }
 
-      const deleteFn = isDirectory ? sftp.rmdir.bind(sftp) : sftp.unlink.bind(sftp)
-      deleteFn(remotePath, (err) => {
-        if (err) {
-          resolve({ success: false, error: err.message })
-          return
-        }
-        resolve({ success: true })
-      })
-    })
+    try {
+      if (isDirectory) {
+        await this.deleteRemoteDirectoryRecursive(sftp, remotePath)
+      } else {
+        await this.sftpUnlinkAsync(sftp, remotePath)
+      }
+      return { success: true }
+    } catch (err: unknown) {
+      return { success: false, error: err instanceof Error ? err.message : '删除失败' }
+    }
   }
 
   // 重命名文件或目录
@@ -738,8 +847,8 @@ class SSHManager {
       let totalSize = 0
 
       try {
-        const remoteStat = await new Promise<any>((res, rej) => {
-          sftp.stat(remotePath, (err, stats) => err ? rej(err) : res(stats))
+        const remoteStat = await new Promise<SFTPStatsLike>((res, rej) => {
+          sftp.stat(remotePath, (err, stats) => err ? rej(err) : res(stats as SFTPStatsLike))
         })
         if (typeof remoteStat.isDirectory === 'function' && remoteStat.isDirectory()) {
           fs.mkdirSync(localPath, { recursive: true })
@@ -903,12 +1012,12 @@ class SSHManager {
       try {
         const localStat = await fsStat(localPath)
         if (localStat.isDirectory()) {
-          await this.ensureRemoteDirectory(sftp, remotePath)
+          await this.ensureRemoteDirectory(id, sftp, remotePath)
           return { success: true }
         }
 
         totalSize = localStat.size
-        await this.ensureRemoteDirectory(sftp, path.posix.dirname(remotePath))
+        await this.ensureRemoteDirectory(id, sftp, path.posix.dirname(remotePath))
 
         if (resume) {
           // 检查临时文件是否存在（断点续传）
@@ -1122,7 +1231,7 @@ class SSHManager {
           return
         }
 
-        const isDirectory = (stats as any).isDirectory()
+        const isDirectory = typeof stats.isDirectory === 'function' && stats.isDirectory()
         const info: FileInfo = {
           name: path.basename(remotePath),
           type: isDirectory ? 'folder' : 'file',
@@ -1425,12 +1534,11 @@ ps aux --sort=-%cpu 2>/dev/null | awk 'NR>1 && NR<=6 {n=$11; gsub(/.*\\//, "", n
 
       const result = await this.execCommand(id, script)
 
-      let osType = '', cpuStr = '', memStr = '', diskStr = '', uptimeStr = ''
+      let cpuStr = '', memStr = '', diskStr = '', uptimeStr = ''
       let osInfo = '', hostname = '', loadAvg = '', networkIP = '', loginUsersStr = '', processCountStr = '', topStr = ''
 
       if (result.output) {
         const parts = result.output.split(SEP).map(s => s.trim())
-        osType = parts[0] || ''
         cpuStr = parts[1] || ''
         memStr = parts[2] || ''
         diskStr = parts[3] || ''

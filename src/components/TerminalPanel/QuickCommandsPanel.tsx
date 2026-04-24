@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { Button, Input, Empty, App, Popconfirm } from 'antd'
+import type { InputRef } from 'antd'
 import {
   PlusOutlined,
   DeleteOutlined,
@@ -32,7 +33,7 @@ const QuickCommandsPanel: React.FC<QuickCommandsPanelProps> = ({
   const [editName, setEditName] = useState('')
   const [editCommand, setEditCommand] = useState('')
   const [adding, setAdding] = useState(false)
-  const nameInputRef = useRef<any>(null)
+  const nameInputRef = useRef<InputRef>(null)
 
   const handleAdd = () => {
     setAdding(true)

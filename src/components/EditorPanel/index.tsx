@@ -120,7 +120,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
         originalContentRef.current = content
 
         // 构建编辑器扩展
-        const langExt = getLanguageExtension(fileName)
+        const langExt = await getLanguageExtension(fileName)
         const isDark = actualTheme === 'dark'
 
         const saveKeymap = keymap.of([{

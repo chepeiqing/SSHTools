@@ -1,4 +1,5 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { TransferProgress } from '../src/types'
 
 // 暴露给渲染进程的API
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -7,7 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setTheme: (theme: 'light' | 'dark' | 'system') => ipcRenderer.invoke('set-theme', theme),
   getSystemTheme: () => ipcRenderer.invoke('get-system-theme'),
   onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => {
-    const handler = (_event: any, theme: 'light' | 'dark') => callback(theme)
+    const handler = (_event: IpcRendererEvent, theme: 'light' | 'dark') => callback(theme)
     ipcRenderer.on('system-theme-changed', handler)
     return () => ipcRenderer.removeListener('system-theme-changed', handler)
   },
@@ -16,7 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   broadcastSettings: (payload: { type: string; data: unknown }) =>
     ipcRenderer.invoke('broadcast-settings', payload),
   onSettingsSync: (callback: (payload: { type: string; data: unknown }) => void) => {
-    const handler = (_event: any, payload: { type: string; data: unknown }) => callback(payload)
+    const handler = (_event: IpcRendererEvent, payload: { type: string; data: unknown }) => callback(payload)
     ipcRenderer.on('settings-sync', handler)
     return () => ipcRenderer.removeListener('settings-sync', handler)
   },
@@ -85,27 +86,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // SSH 事件监听 - 返回清理函数
   onSSHConnected: (callback: (data: { id: string }) => void) => {
-    const handler = (_event: any, data: { id: string }) => callback(data)
+    const handler = (_event: IpcRendererEvent, data: { id: string }) => callback(data)
     ipcRenderer.on('ssh-connected', handler)
     return () => ipcRenderer.removeListener('ssh-connected', handler)
   },
   onSSHDisconnected: (callback: (data: { id: string }) => void) => {
-    const handler = (_event: any, data: { id: string }) => callback(data)
+    const handler = (_event: IpcRendererEvent, data: { id: string }) => callback(data)
     ipcRenderer.on('ssh-disconnected', handler)
     return () => ipcRenderer.removeListener('ssh-disconnected', handler)
   },
   onSSHError: (callback: (data: { id: string; error: string }) => void) => {
-    const handler = (_event: any, data: { id: string; error: string }) => callback(data)
+    const handler = (_event: IpcRendererEvent, data: { id: string; error: string }) => callback(data)
     ipcRenderer.on('ssh-error', handler)
     return () => ipcRenderer.removeListener('ssh-error', handler)
   },
   onSSHData: (callback: (data: { id: string; data: string }) => void) => {
-    const handler = (_event: any, data: { id: string; data: string }) => callback(data)
+    const handler = (_event: IpcRendererEvent, data: { id: string; data: string }) => callback(data)
     ipcRenderer.on('ssh-data', handler)
     return () => ipcRenderer.removeListener('ssh-data', handler)
   },
   onSSHShellClosed: (callback: (data: { id: string }) => void) => {
-    const handler = (_event: any, data: { id: string }) => callback(data)
+    const handler = (_event: IpcRendererEvent, data: { id: string }) => callback(data)
     ipcRenderer.on('ssh-shell-closed', handler)
     return () => ipcRenderer.removeListener('ssh-shell-closed', handler)
   },
@@ -179,16 +180,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sshGetShellHistory: (id: string, count?: number) => ipcRenderer.invoke('ssh-get-shell-history', id, count || 200),
 
   // 传输进度监听
-  onSFTPTransferProgress: (callback: (data: {
-    taskId?: string
-    id: string
-    type: 'upload' | 'download'
-    localPath: string
-    remotePath: string
-    transferred: number
-    total: number
-  }) => void) => {
-    const handler = (_event: any, data: any) => callback(data)
+  onSFTPTransferProgress: (callback: (data: TransferProgress) => void) => {
+    const handler = (_event: IpcRendererEvent, data: TransferProgress) => callback(data)
     ipcRenderer.on('sftp-transfer-progress', handler)
     return () => ipcRenderer.removeListener('sftp-transfer-progress', handler)
   },
@@ -220,7 +213,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('credentials-delete', serverId),
 
   // ==================== 服务器配置备份 ====================
-  backupServers: (data: { servers: any[]; groups: any[] }) =>
+  backupServers: (data: { servers: Record<string, unknown>[]; groups: Record<string, unknown>[] }) =>
     ipcRenderer.invoke('backup-servers', data),
   restoreServers: () =>
     ipcRenderer.invoke('restore-servers'),
@@ -241,14 +234,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 监听标签从其他窗口转入
   onTabReceived: (callback: (tabData: Record<string, unknown>) => void) => {
-    const handler = (_event: any, tabData: Record<string, unknown>) => callback(tabData)
+    const handler = (_event: IpcRendererEvent, tabData: Record<string, unknown>) => callback(tabData)
     ipcRenderer.on('tab-received', handler)
     return () => ipcRenderer.removeListener('tab-received', handler)
   },
 
   // 监听跨窗口拖拽指示器（主进程轮询时通知目标窗口显示插入位置）
   onTabDragOver: (callback: (screenX: number) => void) => {
-    const handler = (_event: any, screenX: number) => callback(screenX)
+    const handler = (_event: IpcRendererEvent, screenX: number) => callback(screenX)
     ipcRenderer.on('tab-drag-over', handler)
     return () => ipcRenderer.removeListener('tab-drag-over', handler)
   },

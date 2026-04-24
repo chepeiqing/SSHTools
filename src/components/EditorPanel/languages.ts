@@ -1,95 +1,68 @@
 import { Extension } from '@codemirror/state'
 import { StreamLanguage } from '@codemirror/language'
-import { javascript } from '@codemirror/lang-javascript'
-import { python } from '@codemirror/lang-python'
-import { json } from '@codemirror/lang-json'
-import { html } from '@codemirror/lang-html'
-import { css } from '@codemirror/lang-css'
-import { markdown } from '@codemirror/lang-markdown'
-import { xml } from '@codemirror/lang-xml'
-import { sql } from '@codemirror/lang-sql'
-import { yaml } from '@codemirror/lang-yaml'
-import { java } from '@codemirror/lang-java'
-import { cpp } from '@codemirror/lang-cpp'
-import { php } from '@codemirror/lang-php'
-import { rust } from '@codemirror/lang-rust'
-import { go } from '@codemirror/lang-go'
-import { shell } from '@codemirror/legacy-modes/mode/shell'
-import { dockerFile } from '@codemirror/legacy-modes/mode/dockerfile'
-import { toml } from '@codemirror/legacy-modes/mode/toml'
-import { properties } from '@codemirror/legacy-modes/mode/properties'
-import { nginx } from '@codemirror/legacy-modes/mode/nginx'
-import { lua } from '@codemirror/legacy-modes/mode/lua'
-import { ruby } from '@codemirror/legacy-modes/mode/ruby'
-import { perl } from '@codemirror/legacy-modes/mode/perl'
-import { powerShell } from '@codemirror/legacy-modes/mode/powershell'
-import { diff } from '@codemirror/legacy-modes/mode/diff'
 
 interface LangDef {
   name: string
   extensions: string[]
-  load: () => Extension
+  load: () => Promise<Extension>
 }
 
 const languages: LangDef[] = [
-  { name: 'JavaScript', extensions: ['.js', '.mjs', '.cjs'], load: () => javascript() },
-  { name: 'TypeScript', extensions: ['.ts', '.mts', '.cts'], load: () => javascript({ typescript: true }) },
-  { name: 'JSX', extensions: ['.jsx'], load: () => javascript({ jsx: true }) },
-  { name: 'TSX', extensions: ['.tsx'], load: () => javascript({ jsx: true, typescript: true }) },
-  { name: 'Python', extensions: ['.py', '.pyw', '.pyi'], load: () => python() },
-  { name: 'JSON', extensions: ['.json', '.jsonc', '.json5'], load: () => json() },
-  { name: 'HTML', extensions: ['.html', '.htm', '.xhtml'], load: () => html() },
-  { name: 'CSS', extensions: ['.css'], load: () => css() },
-  { name: 'SCSS', extensions: ['.scss', '.sass', '.less'], load: () => css() },
-  { name: 'Markdown', extensions: ['.md', '.markdown', '.mdx'], load: () => markdown() },
-  { name: 'XML', extensions: ['.xml', '.svg', '.xsl', '.xslt', '.plist'], load: () => xml() },
-  { name: 'SQL', extensions: ['.sql'], load: () => sql() },
-  { name: 'YAML', extensions: ['.yml', '.yaml'], load: () => yaml() },
-  { name: 'Java', extensions: ['.java'], load: () => java() },
-  { name: 'C', extensions: ['.c', '.h'], load: () => cpp() },
-  { name: 'C++', extensions: ['.cpp', '.cc', '.cxx', '.hpp', '.hxx'], load: () => cpp() },
-  { name: 'C#', extensions: ['.cs'], load: () => java() },
-  { name: 'PHP', extensions: ['.php'], load: () => php() },
-  { name: 'Rust', extensions: ['.rs'], load: () => rust() },
-  { name: 'Go', extensions: ['.go'], load: () => go() },
-  { name: 'Shell', extensions: ['.sh', '.bash', '.zsh', '.fish', '.ksh'], load: () => StreamLanguage.define(shell) },
-  { name: 'Dockerfile', extensions: ['.dockerfile'], load: () => StreamLanguage.define(dockerFile) },
-  { name: 'TOML', extensions: ['.toml'], load: () => StreamLanguage.define(toml) },
-  { name: 'INI', extensions: ['.ini', '.cfg', '.conf', '.properties'], load: () => StreamLanguage.define(properties) },
-  { name: 'Lua', extensions: ['.lua'], load: () => StreamLanguage.define(lua) },
-  { name: 'Ruby', extensions: ['.rb', '.rake', '.gemspec'], load: () => StreamLanguage.define(ruby) },
-  { name: 'Perl', extensions: ['.pl', '.pm'], load: () => StreamLanguage.define(perl) },
-  { name: 'PowerShell', extensions: ['.ps1', '.psm1', '.psd1'], load: () => StreamLanguage.define(powerShell) },
-  { name: 'Diff', extensions: ['.diff', '.patch'], load: () => StreamLanguage.define(diff) },
-  { name: 'Log', extensions: ['.log'], load: () => [] as unknown as Extension },
+  { name: 'JavaScript', extensions: ['.js', '.mjs', '.cjs'], load: async () => (await import('@codemirror/lang-javascript')).javascript() },
+  { name: 'TypeScript', extensions: ['.ts', '.mts', '.cts'], load: async () => (await import('@codemirror/lang-javascript')).javascript({ typescript: true }) },
+  { name: 'JSX', extensions: ['.jsx'], load: async () => (await import('@codemirror/lang-javascript')).javascript({ jsx: true }) },
+  { name: 'TSX', extensions: ['.tsx'], load: async () => (await import('@codemirror/lang-javascript')).javascript({ jsx: true, typescript: true }) },
+  { name: 'Python', extensions: ['.py', '.pyw', '.pyi'], load: async () => (await import('@codemirror/lang-python')).python() },
+  { name: 'JSON', extensions: ['.json', '.jsonc', '.json5'], load: async () => (await import('@codemirror/lang-json')).json() },
+  { name: 'HTML', extensions: ['.html', '.htm', '.xhtml'], load: async () => (await import('@codemirror/lang-html')).html() },
+  { name: 'CSS', extensions: ['.css'], load: async () => (await import('@codemirror/lang-css')).css() },
+  { name: 'SCSS', extensions: ['.scss', '.sass', '.less'], load: async () => (await import('@codemirror/lang-css')).css() },
+  { name: 'Markdown', extensions: ['.md', '.markdown', '.mdx'], load: async () => (await import('@codemirror/lang-markdown')).markdown() },
+  { name: 'XML', extensions: ['.xml', '.svg', '.xsl', '.xslt', '.plist'], load: async () => (await import('@codemirror/lang-xml')).xml() },
+  { name: 'SQL', extensions: ['.sql'], load: async () => (await import('@codemirror/lang-sql')).sql() },
+  { name: 'YAML', extensions: ['.yml', '.yaml'], load: async () => (await import('@codemirror/lang-yaml')).yaml() },
+  { name: 'Java', extensions: ['.java'], load: async () => (await import('@codemirror/lang-java')).java() },
+  { name: 'C', extensions: ['.c', '.h'], load: async () => (await import('@codemirror/lang-cpp')).cpp() },
+  { name: 'C++', extensions: ['.cpp', '.cc', '.cxx', '.hpp', '.hxx'], load: async () => (await import('@codemirror/lang-cpp')).cpp() },
+  { name: 'C#', extensions: ['.cs'], load: async () => (await import('@codemirror/lang-java')).java() },
+  { name: 'PHP', extensions: ['.php'], load: async () => (await import('@codemirror/lang-php')).php() },
+  { name: 'Rust', extensions: ['.rs'], load: async () => (await import('@codemirror/lang-rust')).rust() },
+  { name: 'Go', extensions: ['.go'], load: async () => (await import('@codemirror/lang-go')).go() },
+  { name: 'Shell', extensions: ['.sh', '.bash', '.zsh', '.fish', '.ksh'], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/shell')).shell) },
+  { name: 'Dockerfile', extensions: ['.dockerfile'], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/dockerfile')).dockerFile) },
+  { name: 'TOML', extensions: ['.toml'], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/toml')).toml) },
+  { name: 'INI', extensions: ['.ini', '.cfg', '.conf', '.properties'], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/properties')).properties) },
+  { name: 'Lua', extensions: ['.lua'], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/lua')).lua) },
+  { name: 'Ruby', extensions: ['.rb', '.rake', '.gemspec'], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/ruby')).ruby) },
+  { name: 'Perl', extensions: ['.pl', '.pm'], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/perl')).perl) },
+  { name: 'PowerShell', extensions: ['.ps1', '.psm1', '.psd1'], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/powershell')).powerShell) },
+  { name: 'Diff', extensions: ['.diff', '.patch'], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/diff')).diff) },
+  { name: 'Log', extensions: ['.log'], load: async () => [] as unknown as Extension },
 ]
 
-// 特殊文件名匹配
 const specialFiles: Record<string, LangDef> = {
-  'Makefile': { name: 'Makefile', extensions: [], load: () => StreamLanguage.define(shell) },
-  'Dockerfile': { name: 'Dockerfile', extensions: [], load: () => StreamLanguage.define(dockerFile) },
-  '.gitignore': { name: 'Git Ignore', extensions: [], load: () => [] as unknown as Extension },
-  '.env': { name: 'Env', extensions: [], load: () => StreamLanguage.define(properties) },
-  'nginx.conf': { name: 'Nginx', extensions: [], load: () => StreamLanguage.define(nginx) },
+  Makefile: { name: 'Makefile', extensions: [], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/shell')).shell) },
+  Dockerfile: { name: 'Dockerfile', extensions: [], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/dockerfile')).dockerFile) },
+  '.gitignore': { name: 'Git Ignore', extensions: [], load: async () => [] as unknown as Extension },
+  '.env': { name: 'Env', extensions: [], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/properties')).properties) },
+  'nginx.conf': { name: 'Nginx', extensions: [], load: async () => StreamLanguage.define((await import('@codemirror/legacy-modes/mode/nginx')).nginx) },
 }
 
 function findLang(fileName: string): LangDef | undefined {
-  // 先匹配特殊文件名
   const baseName = fileName.split('/').pop() || fileName
   if (specialFiles[baseName]) return specialFiles[baseName]
 
-  // 再匹配扩展名
   const dotIdx = baseName.lastIndexOf('.')
   if (dotIdx === -1) return undefined
   const ext = baseName.slice(dotIdx).toLowerCase()
   return languages.find(l => l.extensions.includes(ext))
 }
 
-export function getLanguageExtension(fileName: string): Extension {
+export async function getLanguageExtension(fileName: string): Promise<Extension> {
   const lang = findLang(fileName)
   if (!lang) return []
   try {
-    return lang.load()
+    return await lang.load()
   } catch {
     return []
   }
@@ -99,7 +72,6 @@ export function getLanguageName(fileName: string): string {
   return findLang(fileName)?.name || 'Text'
 }
 
-// 判断是否为文本文件（通过扩展名）
 const binaryExtensions = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.tiff', '.tif',
   '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.wav', '.ogg', '.flac',

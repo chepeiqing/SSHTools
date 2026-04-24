@@ -1,4 +1,3 @@
-import { create } from 'zustand'
 import { Modal, Button, Space, Switch, ColorPicker, Select } from 'antd'
 import {
   SunOutlined,
@@ -8,19 +7,8 @@ import {
 } from '@ant-design/icons'
 import { useThemeStore } from '../../stores/themeStore'
 import { useTerminalThemeStore, darkPresets, lightPresets } from '../../stores/terminalThemeStore'
+import { useSettingsModal } from './store'
 import './index.css'
-
-interface SettingsModalState {
-  open: boolean
-  openSettings: () => void
-  closeSettings: () => void
-}
-
-export const useSettingsModal = create<SettingsModalState>((set) => ({
-  open: false,
-  openSettings: () => set({ open: true }),
-  closeSettings: () => set({ open: false }),
-}))
 
 const SettingsModal: React.FC = () => {
   const { open, closeSettings } = useSettingsModal()

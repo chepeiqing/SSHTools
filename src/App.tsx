@@ -1,13 +1,20 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import TitleBar from './components/TitleBar'
-import { emitSessionConnect } from './components/SessionManager'
-import MainContent from './components/MainContent'
-import SettingsModal from './components/SettingsModal'
+import { emitSessionConnect } from './components/SessionManager/events'
 import ErrorBoundary from './components/ErrorBoundary'
 import { useThemeStore } from './stores/themeStore'
 import { initTerminalSettingsSync } from './stores/terminalThemeStore'
 import { hydrateCredentials, restoreFromBackup } from './stores/serverStore'
 import './styles/global.css'
+
+const MainContent = lazy(() => import('./components/MainContent'))
+const SettingsModal = lazy(() => import('./components/SettingsModal'))
+
+const appFallback = (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
+    正在加载...
+  </div>
+)
 
 const App: React.FC = () => {
   const initTheme = useThemeStore((state) => state.initTheme)
@@ -34,9 +41,13 @@ const App: React.FC = () => {
       <div className="app-container">
         <TitleBar onConnect={(serverId) => emitSessionConnect({ serverId })} />
         <div className="app-main">
-          <MainContent />
+          <Suspense fallback={appFallback}>
+            <MainContent />
+          </Suspense>
         </div>
-        <SettingsModal />
+        <Suspense fallback={null}>
+          <SettingsModal />
+        </Suspense>
       </div>
     </ErrorBoundary>
   )

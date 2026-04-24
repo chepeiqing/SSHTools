@@ -13,7 +13,7 @@ import {
   GithubOutlined,
   MailOutlined,
 } from '@ant-design/icons'
-import { useSettingsModal } from '../SettingsModal'
+import { useSettingsModal } from '../SettingsModal/store'
 import { useServerStore } from '../../stores/serverStore'
 import { useConnectionStore } from '../../stores/connectionStore'
 import type { MenuProps } from 'antd'

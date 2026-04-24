@@ -66,7 +66,8 @@ export const useTerminalHistoryStore = create<TerminalHistoryState>()(
 
       clearHistory: (serverId) => {
         set(state => {
-          const { [serverId]: _, ...rest } = state.histories
+          const rest = { ...state.histories }
+          delete rest[serverId]
           return { histories: rest }
         })
       },

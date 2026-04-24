@@ -2,42 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useServerStore } from '../../stores/serverStore'
 import { useConnectionStore } from '../../stores/connectionStore'
 import ServerTree from '../ServerTree'
+import { emitSessionConnect } from './events'
 import './index.css'
-
-// 用于通知 MainContent 创建标签的事件
-type SessionConnectEvent = {
-  serverId: string
-}
-
-// 简单的事件发射器
-const sessionConnectListeners: ((event: SessionConnectEvent) => void)[] = []
-
-export function onSessionConnect(callback: (event: SessionConnectEvent) => void) {
-  sessionConnectListeners.push(callback)
-  return () => {
-    const index = sessionConnectListeners.indexOf(callback)
-    if (index > -1) sessionConnectListeners.splice(index, 1)
-  }
-}
-
-export function emitSessionConnect(event: SessionConnectEvent) {
-  sessionConnectListeners.forEach(cb => cb(event))
-}
-
-// 用于从外部打开新建会话弹窗
-const newSessionListeners: (() => void)[] = []
-
-export function onOpenNewSession(callback: () => void) {
-  newSessionListeners.push(callback)
-  return () => {
-    const index = newSessionListeners.indexOf(callback)
-    if (index > -1) newSessionListeners.splice(index, 1)
-  }
-}
-
-export function emitOpenNewSession() {
-  newSessionListeners.forEach(cb => cb())
-}
 
 interface SessionManagerProps {
   collapsed: boolean
@@ -54,7 +20,6 @@ const SessionManager: React.FC<SessionManagerProps> = ({ collapsed }) => {
   const { servers } = useServerStore()
   const { connections } = useConnectionStore()
 
-  // 根据 serverId 获取连接状态
   const getServerStatus = (serverId: string): 'connected' | 'connecting' | 'disconnected' => {
     for (const [, conn] of connections) {
       if (conn.serverId === serverId) {
@@ -65,13 +30,11 @@ const SessionManager: React.FC<SessionManagerProps> = ({ collapsed }) => {
     return 'disconnected'
   }
 
-  // 快速连接列表：按最近连接时间倒序，取最近 4 条
   const quickConnections = [...servers]
     .filter(s => s.lastConnectedAt)
     .sort((a, b) => (b.lastConnectedAt || 0) - (a.lastConnectedAt || 0))
     .slice(0, 4)
 
-  // 处理拖拽调整宽度
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     setIsResizing(true)
@@ -86,11 +49,14 @@ const SessionManager: React.FC<SessionManagerProps> = ({ collapsed }) => {
       const newWidth = Math.max(180, startWidthRef.current + diff)
       setWidth(newWidth)
     }
+
     const handleMouseUp = () => setIsResizing(false)
+
     if (isResizing) {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
     }
+
     return () => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
@@ -109,7 +75,6 @@ const SessionManager: React.FC<SessionManagerProps> = ({ collapsed }) => {
     >
       {!collapsed && (
         <div className="session-manager-content">
-          {/* 快速连接 */}
           {quickConnections.length > 0 && (
             <>
               <div className="section-title no-border">
@@ -132,7 +97,6 @@ const SessionManager: React.FC<SessionManagerProps> = ({ collapsed }) => {
             </>
           )}
 
-          {/* 所有连接 */}
           <div className={`section-title ${quickConnections.length === 0 ? 'no-border' : ''}`}>
             <span>所有连接</span>
             <span className="all-count">{servers.length}</span>
@@ -142,7 +106,6 @@ const SessionManager: React.FC<SessionManagerProps> = ({ collapsed }) => {
         </div>
       )}
 
-      {/* 拖拽手柄 */}
       {!collapsed && (
         <div className={`resize-handle ${isResizing ? 'resizing' : ''}`} onMouseDown={handleMouseDown} />
       )}

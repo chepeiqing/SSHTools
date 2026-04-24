@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
+import type { ITerminalOptions } from '@xterm/xterm'
 import { Button, Dropdown, Input, App, Space } from 'antd'
 import type { MenuProps } from 'antd'
 import {
@@ -85,6 +86,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const onReconnectRef = useRef(onReconnect)
   const wordWrapRef = useRef(wordWrap)
   const addCommandRef = useRef<(serverId: string, command: string) => void>(() => {})
+  const restoreFocusAfterContextMenuRef = useRef(false)
 
   // 获取连接状态
   const connection = connectionId ? getConnection(connectionId) : undefined
@@ -139,6 +141,13 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   const [quickCmdsOpen, setQuickCmdsOpen] = useState(false)
   const { servers, updateServer } = useServerStore()
 
+  const focusTerminal = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (!terminalInstance.current || !isActive || isDisconnected || searchVisible) return
+      terminalInstance.current.focus()
+    })
+  }, [isActive, isDisconnected, searchVisible])
+
   // 终端配色
   const currentPresetId = actualTheme === 'dark' ? terminalThemeState.darkPresetId : terminalThemeState.lightPresetId
   const currentCustomColors = actualTheme === 'dark' ? terminalThemeState.customDark : terminalThemeState.customLight
@@ -166,7 +175,12 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     } catch {
       message.error('粘贴失败，请检查剪贴板权限')
     }
-  }, [])
+  }, [focusTerminal, message])
+
+  const pasteToTerminalAndFocus = useCallback(async () => {
+    await pasteToTerminal()
+    focusTerminal()
+  }, [focusTerminal, pasteToTerminal])
 
   // 复制选中内容（静默模式，不弹提示）
   const copySelectionSilent = useCallback(async (): Promise<boolean> => {
@@ -182,7 +196,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
       }
     }
     return false
-  }, [])
+  }, [focusTerminal, message])
 
   // 复制并粘贴
   const copyAndPaste = useCallback(async () => {
@@ -203,7 +217,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         }
       }
     }
-  }, [])
+  }, [message])
 
   // 全选
   const selectAll = useCallback(() => {
@@ -220,7 +234,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
     const container = terminalRef.current
 
-    const term = new Terminal({
+    const terminalOptions: ITerminalOptions = {
       fontSize: useTerminalThemeStore.getState().fontSize,
       fontFamily: useTerminalThemeStore.getState().fontFamily,
       cursorBlink: true,
@@ -231,7 +245,8 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         useThemeStore.getState().actualTheme,
         useTerminalThemeStore.getState()
       ),
-    } as any)
+    }
+    const term = new Terminal(terminalOptions)
 
     const fitAddon = new FitAddon()
     const webLinksAddon = new WebLinksAddon()
@@ -663,12 +678,13 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault()
+      restoreFocusAfterContextMenuRef.current = isActive && !isDisconnected
       setContextMenuPos({ x: e.clientX, y: e.clientY })
     }
 
     el.addEventListener('contextmenu', handleContextMenu)
     return () => el.removeEventListener('contextmenu', handleContextMenu)
-  }, [])
+  }, [isActive, isDisconnected])
 
   // 点击其他地方关闭右键菜单
   useEffect(() => {
@@ -677,6 +693,12 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     document.addEventListener('click', handleClick)
     return () => document.removeEventListener('click', handleClick)
   }, [contextMenuPos])
+
+  useEffect(() => {
+    if (contextMenuPos || !restoreFocusAfterContextMenuRef.current) return
+    restoreFocusAfterContextMenuRef.current = false
+    focusTerminal()
+  }, [contextMenuPos, focusTerminal])
 
   // 切换自动换行
   const toggleWordWrap = () => {
@@ -702,7 +724,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
     }
   }
   copySelectionSilentRef.current = copySelectionSilent
-  pasteToTerminalRef.current = pasteToTerminal
+  pasteToTerminalRef.current = pasteToTerminalAndFocus
 
   // 清屏
   const clearTerminal = () => {
@@ -827,7 +849,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
       label: '粘贴',
       icon: <SnippetsOutlined />,
       onClick: async () => {
-        await pasteToTerminal()
+        await pasteToTerminalAndFocus()
         setContextMenuPos(null)
       },
     },
@@ -838,6 +860,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
       disabled: !hasSelection,
       onClick: async () => {
         await copyAndPaste()
+        focusTerminal()
         setContextMenuPos(null)
       },
     },
@@ -875,6 +898,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
       label: '搜索',
       icon: <SearchOutlined />,
       onClick: () => {
+        restoreFocusAfterContextMenuRef.current = false
         setSearchVisible(true)
         setContextMenuPos(null)
       },
@@ -895,6 +919,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         label: sftpVisible ? 'SFTP 定位到当前目录' : '打开 SFTP',
         icon: <FolderOutlined />,
         onClick: async () => {
+          restoreFocusAfterContextMenuRef.current = false
           const path = await getCurrentPath()
           onToggleSFTP(path)
           setContextMenuPos(null)
